@@ -8,7 +8,7 @@ Un motor ETL geoespacial visual, serverless y de código abierto que se ejecuta 
 
 JETL (Jav. Extract, Transform, Load) es una herramienta de procesamiento de datos espaciales que no requiere instalación, servidores ni configuraciones complejas. Funciona como un único archivo HTML que orquesta librerías potentes como Turf.js y Leaflet bajo una interfaz de flujo de nodos (basada en Drawflow).
 
-- Es ideal para:
+Es ideal para:
 
 - Prototipado rápido de flujos espaciales.
 
