@@ -35,7 +35,7 @@ Visualización Integrada:
 
 - Consola de logs en tiempo real.
 
-🛠️ Capacidades y Transformadores
+Capacidades y Transformadores
 El sistema cuenta con más de 40 transformadores categorizados para cubrir las necesidades típicas de un flujo ETL:
 
 1. Inputs (Extract)
