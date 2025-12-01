@@ -116,7 +116,7 @@ Estado del Proyecto y Limitaciones
 
 Contribuciones
 
-- ¡Las contribuciones son bienvenidas! Si tienes una idea para un nuevo "Transformer" o una mejora en la UI:
+¡Las contribuciones son bienvenidas! Si tienes una idea para un nuevo "Transformer" o una mejora en la UI:
 
 - Haz un Fork del repositorio.
 
