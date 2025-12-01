@@ -21,6 +21,8 @@ Es ideal para:
 Características Principales
 - 100% Client-Side: Todo el procesamiento ocurre en la memoria de tu navegador. Tus datos no salen de tu PC.
 
+- Interfaz dinámica compatible con PC o Android/Iphone.
+
 - Sin Instalación: Simplemente abre el archivo index.html en Chrome, Firefox o Edge.
 
 - Interfaz Visual (Flow-based): Arrastra, suelta y conecta nodos al estilo FME o ModelBuilder.
@@ -39,37 +41,37 @@ Capacidades y Transformadores
 El sistema cuenta con más de 40 transformadores categorizados para cubrir las necesidades típicas de un flujo ETL:
 
 1. Inputs (Extract)
-- File Reader: Soporte para .geojson, .json, .kml y .zip (Shapefiles comprimidos).
+  - File Reader: Soporte para .geojson, .json, .kml y .zip (Shapefiles comprimidos).
 
-- OSM Reader: Descarga datos reales de OpenStreetMap (edificios, carreteras, parques) usando Overpass API.
+  - OSM Reader: Descarga datos reales de OpenStreetMap (edificios, carreteras, parques) usando Overpass API.
 
-- Generators: Grillas (Hex/Cuadrada), Puntos aleatorios, WKT manual.
+  - Generators: Grillas (Hex/Cuadrada), Puntos aleatorios, WKT manual.
 
 2. Geometría (Spatial Transform)
-- Manipulación: Buffers, Centroides, Envolventes (Convex/Concave Hull), Voronoi.
+  - Manipulación: Buffers, Centroides, Envolventes (Convex/Concave Hull), Voronoi.
 
-- Topología: Simplificación, Suavizado (Bezier), Densificación, Limpieza de coordenadas.
+  - Topología: Simplificación, Suavizado (Bezier), Densificación, Limpieza de coordenadas.
 
-- Conversión: Línea a Polígono, Polígono a Línea, Multipart a Singlepart (Explode).
+  - Conversión: Línea a Polígono, Polígono a Línea, Multipart a Singlepart (Explode).
 
 3. Análisis Espacial
-- Relaciones: Intersect, Contains, Disjoint, Within.
+  - Relaciones: Intersect, Contains, Disjoint, Within.
 
-- Procesos: Clipping (Recorte), Erase (Diferencia), Unión (Dissolve/Merge).
+  - Procesos: Clipping (Recorte), Erase (Diferencia), Unión (Dissolve/Merge).
 
-- Clustering: K-Means y DBSCAN.
+  - Clustering: K-Means y DBSCAN.
 
-- Interpolación: Isolíneas y TIN Grids.
+  - Interpolación: Isolíneas y TIN Grids.
 
 4. Atributos (Alfanumérico)
-- Calculadora: Expresiones JavaScript personalizadas para crear o modificar campos.
+  - Calculadora: Expresiones JavaScript personalizadas para crear o modificar campos.
 
-- Gestión: Renombrar, Eliminar, Mantener, Mapear valores, Concatenar, Split.
+  - Gestión: Renombrar, Eliminar, Mantener, Mapear valores, Concatenar, Split.
 
-- Estadísticas: Cálculo de Área y Longitud geodésica.
+  - Estadísticas: Cálculo de Área y Longitud geodésica.
 
 5. Outputs (Load)
-- Descarga de resultados en GeoJSON, KML o CSV.
+  - Descarga de resultados en GeoJSON, KML o CSV.
 
 Instalación y Uso
 No hay npm install. No hay pip install.
