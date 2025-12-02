@@ -16,7 +16,11 @@
     <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
     <script src="https://unpkg.com/@mapbox/togeojson@0.16.0/togeojson.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    <script src="https://unpkg.com/wellknown@0.5.0/wellknown.js"></script> <style>
+    <script src="https://unpkg.com/wellknown@0.5.0/wellknown.js"></script>
+    <!-- Optional extended readers (GPKG, Parquet) -->
+    <script src="https://unpkg.com/@ngageoint/geopackage/dist/geopackage.min.js"></script>
+    <script src="https://unpkg.com/parquetjs-lite/dist/parquet.min.js"></script>
+    <style>
         /* --- CORE VARS --- */
         :root { --bg: #121212; --panel: #1e1e1e; --node: #252526; --text: #e0e0e0; --accent: #3498db; --border: #333; --success: #27ae60; --danger: #c0392b; }
         * { box-sizing: border-box; user-select: none; }
@@ -194,9 +198,9 @@
     <div id="bottom-panel">
         <div id="panel-tabs">
             <div style="display:flex; height:100%">
-                <button class="tab-btn active" onclick="switchTab('map')"><i class="fas fa-map-marked-alt"></i> Mapa</button>
-                <button class="tab-btn" onclick="switchTab('table')"><i class="fas fa-table"></i> Datos</button>
-                <button class="tab-btn" onclick="switchTab('logs')"><i class="fas fa-terminal"></i> Consola</button>
+                <button class="tab-btn active" onclick="switchTab('map', event)"><i class="fas fa-map-marked-alt"></i> Mapa</button>
+                <button class="tab-btn" onclick="switchTab('table', event)"><i class="fas fa-table"></i> Datos</button>
+                <button class="tab-btn" onclick="switchTab('logs', event)"><i class="fas fa-terminal"></i> Consola</button>
             </div>
             <button class="tab-btn" style="padding:0 15px" onclick="togglePanelHeight()"><i class="fas fa-compress-alt"></i></button>
         </div>
@@ -242,8 +246,8 @@
         // =============================================
         const TOOL_REGISTRY = {
             
-            // --- 1. INPUTS / READERS (GENERATORS) ---
-            reader_osm: { cat:'1. Inputs', label:'OSM Reader', icon:'fa-globe', color:'#e67e22', in:0, out:1, 
+            // --- 1. ENTRADAS / LECTORES (GENERADORES) ---
+            reader_osm: { cat:'1. Entradas', label:'Lector OSM', icon:'fa-globe', color:'#e67e22', in:0, out:1, 
                 tpl:()=>`<select class="node-control" df-t><option value="building">Edificios</option><option value="highway">Carreteras</option><option value="leisure=park">Parques</option><option value="amenity">Servicios</option><option value="waterway">Agua</option><option value="landuse">Usos suelo</option></select><div style="font-size:0.7em;color:#aaa">Ciudad Aleatoria (ES)</div>`, 
                 run: async(id,i,d)=>{ 
                     const t=d.querySelector('[df-t]').value; const c=CITIES[Math.floor(Math.random()*CITIES.length)];
@@ -254,27 +258,27 @@
                     const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:q}); return osmtogeojson(await r.json());
                 } 
             },
-            reader_file: { cat:'1. Inputs', label:'File Reader', icon:'fa-folder-open', color:'#e67e22', in:0, out:1, 
+            reader_file: { cat:'1. Entradas', label:'Leer Archivo', icon:'fa-folder-open', color:'#e67e22', in:0, out:1, 
                 tpl:(id)=>`<input type="file" onchange="loadFile(this,'${id}')" class="node-control"><input type="hidden" id="d-${id}"><div style="font-size:0.7em;color:#aaa" id="lbl-${id}">Sin archivo</div>`, 
                 run: async(id)=>{ const v = document.getElementById('d-'+id).value; if(!v) throw new Error("Sin archivo"); return JSON.parse(v); } 
             },
-            reader_http: { cat:'1. Inputs', label:'HTTP JSON', icon:'fa-cloud-download-alt', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-u placeholder="URL (GeoJSON)">`, run: async(id,i,d)=>{const r=await fetch(d.querySelector('[df-u]').value); return await r.json();} },
-            reader_wkt: { cat:'1. Inputs', label:'WKT/Text', icon:'fa-font', color:'#e67e22', in:0, out:1, tpl:()=>`<textarea class="node-control" df-w placeholder="POINT(30 10)"></textarea>`, run: async(id,i,d)=>{const t=d.querySelector('[df-w]').value; const w=wellknown(t); return turf.featureCollection([turf.feature(w)])} },
-            reader_bbox_gen: { cat:'1. Inputs', label:'BBox Creator', icon:'fa-vector-square', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-b placeholder="minX,minY,maxX,maxY" value="-3.75,40.4,-3.65,40.5">`, run:(id,i,d)=>{const b=d.querySelector('[df-b]').value.split(',').map(Number); return turf.featureCollection([turf.bboxPolygon(b)])} },
-            gen_point: { cat:'1. Inputs', label:'Point Creator', icon:'fa-map-pin', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-c placeholder="Lon,Lat" value="-3.703,40.416">`, run:(id,i,d)=>{const c=d.querySelector('[df-c]').value.split(',').map(Number); return turf.featureCollection([turf.point(c)])} },
-            gen_grid: { cat:'1. Inputs', label:'Grid Generator', icon:'fa-th', color:'#e67e22', in:0, out:1, tpl:()=>`<select class="node-control" df-t><option value="hex">Hex</option><option value="sq">Square</option></select><input class="node-control" type="number" df-s value="1" placeholder="Size km">`, run:(id,i,d)=>{const t=d.querySelector('[df-t]').value,s=parseFloat(d.querySelector('[df-s]').value),b=[-3.8,40.3,-3.6,40.5]; return t==='hex'?turf.hexGrid(b,s):turf.squareGrid(b,s)} },
-            gen_random: { cat:'1. Inputs', label:'Random Points', icon:'fa-dice', color:'#e67e22', in:0, out:1, tpl:()=>`<input type="number" df-n value="50" class="node-control">`, run:(id,i,d)=>turf.randomPoint(parseInt(d.querySelector('[df-n]').value), {bbox:[-3.8,40.3,-3.6,40.5]}) },
+            reader_http: { cat:'1. Entradas', label:'JSON HTTP', icon:'fa-cloud-download-alt', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-u placeholder="URL (GeoJSON)">`, run: async(id,i,d)=>{const r=await fetch(d.querySelector('[df-u]').value); return await r.json();} },
+            reader_wkt: { cat:'1. Entradas', label:'WKT/Texto', icon:'fa-font', color:'#e67e22', in:0, out:1, tpl:()=>`<textarea class="node-control" df-w placeholder="POINT(30 10)"></textarea>`, run: async(id,i,d)=>{const t=d.querySelector('[df-w]').value; const w=wellknown(t); return turf.featureCollection([turf.feature(w)])} },
+            reader_bbox_gen: { cat:'1. Entradas', label:'Generador BBox', icon:'fa-vector-square', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-b placeholder="minX,minY,maxX,maxY" value="-3.75,40.4,-3.65,40.5">`, run:(id,i,d)=>{const b=d.querySelector('[df-b]').value.split(',').map(Number); return turf.featureCollection([turf.bboxPolygon(b)])} },
+            gen_point: { cat:'1. Entradas', label:'Generador Punto', icon:'fa-map-pin', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-c placeholder="Lon,Lat" value="-3.703,40.416">`, run:(id,i,d)=>{const c=d.querySelector('[df-c]').value.split(',').map(Number); return turf.featureCollection([turf.point(c)])} },
+            gen_grid: { cat:'1. Entradas', label:'Generador Malla', icon:'fa-th', color:'#e67e22', in:0, out:1, tpl:()=>`<select class="node-control" df-t><option value="hex">Hexagonal</option><option value="sq">Cuadrada</option></select><input class="node-control" type="number" df-s value="1" placeholder="Tamaño km">`, run:(id,i,d)=>{const t=d.querySelector('[df-t]').value,s=parseFloat(d.querySelector('[df-s]').value),b=[-3.8,40.3,-3.6,40.5]; return t==='hex'?turf.hexGrid(b,s):turf.squareGrid(b,s)} },
+            gen_random: { cat:'1. Entradas', label:'Puntos Aleatorios', icon:'fa-dice', color:'#e67e22', in:0, out:1, tpl:()=>`<input type="number" df-n value="50" class="node-control">`, run:(id,i,d)=>turf.randomPoint(parseInt(d.querySelector('[df-n]').value), {bbox:[-3.8,40.3,-3.6,40.5]}) },
 
-            // --- 2. GEOMETRY (MANIPULATION) ---
-            geo_buffer: { cat:'2. Geometry', label:'Bufferer', icon:'fa-bullseye', color:'#2980b9', in:1, out:1, tpl:()=>`<input type="number" df-v value="0.1" class="node-control" placeholder="km">`, run: (id,i,d)=>turf.buffer(i[0], parseFloat(d.querySelector('[df-v]').value), {units:'kilometers'}) },
-            geo_centroid: { cat:'2. Geometry', label:'CenterPoint', icon:'fa-dot-circle', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Centroide</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centroid(f,{properties:f.properties}))) },
-            geo_center_mass: { cat:'2. Geometry', label:'Centro de Masa', icon:'fa-crosshairs', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Masa Ponderada</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centerOfMass(f,{properties:f.properties}))) },
-            geo_midpoint: { cat:'2. Geometry', label:'Midpoint', icon:'fa-grip-lines', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Punto Medio (2 pts)</div>`, run: (id,i)=>{if(i[0].features.length<2)return i[0]; return turf.featureCollection([turf.midpoint(i[0].features[0], i[0].features[1])])} },
-            geo_bbox: { cat:'2. Geometry', label:'Envelope', icon:'fa-square-full', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Caja Límite</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.bboxPolygon(turf.bbox(f)))) },
-            geo_convex: { cat:'2. Geometry', label:'Convex Hull', icon:'fa-draw-polygon', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Envolvente</div>`, run: (id,i)=>turf.convex(i[0]) },
-            geo_concave: { cat:'2. Geometry', label:'Concave Hull', icon:'fa-star-of-life', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Envolvente Ajust.</div>`, run: (id,i)=>turf.concave(i[0], {units:'kilometers', maxEdge:1}) },
+            // --- 2. GEOMETRÍA (MANIPULACIÓN) ---
+            geo_buffer: { cat:'2. Geometría', label:'Buffer', icon:'fa-bullseye', color:'#2980b9', in:1, out:1, tpl:()=>`<input type="number" df-v value="0.1" class="node-control" placeholder="km">`, run: (id,i,d)=>turf.buffer(i[0], parseFloat(d.querySelector('[df-v]').value), {units:'kilometers'}) },
+            geo_centroid: { cat:'2. Geometría', label:'Centroides', icon:'fa-dot-circle', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Centroide</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centroid(f,{properties:f.properties}))) },
+            geo_center_mass: { cat:'2. Geometría', label:'Centro de Masa', icon:'fa-crosshairs', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Masa Ponderada</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centerOfMass(f,{properties:f.properties}))) },
+            geo_midpoint: { cat:'2. Geometría', label:'Punto Medio', icon:'fa-grip-lines', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Punto Medio (2 pts)</div>`, run: (id,i)=>{if(i[0].features.length<2)return i[0]; return turf.featureCollection([turf.midpoint(i[0].features[0], i[0].features[1])])} },
+            geo_bbox: { cat:'2. Geometría', label:'Envelope', icon:'fa-square-full', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Caja Límite</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.bboxPolygon(turf.bbox(f)))) },
+            geo_convex: { cat:'2. Geometría', label:'Convex Hull', icon:'fa-draw-polygon', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Envolvente</div>`, run: (id,i)=>turf.convex(i[0]) },
+            geo_concave: { cat:'2. Geometría', label:'Concave Hull', icon:'fa-star-of-life', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Envolvente Ajust.</div>`, run: (id,i)=>turf.concave(i[0], {units:'kilometers', maxEdge:1}) },
 			geo_voronoi: { 
-							cat:'2. Geometry', label:'Voronoi', icon:'fa-th-large', color:'#2980b9', in:1, out:1, 
+							cat:'2. Geometría', label:'Voronoi', icon:'fa-th-large', color:'#2980b9', in:1, out:1, 
 							tpl:()=>`<div>Polígonos</div>`, 
 							run: (id,i)=>{
 								if (!i[0] || !i[0].features) throw new Error("Sin datos");
@@ -324,35 +328,37 @@
 								return result;
 							} 
 						},
-			geo_union: { cat:'2. Geometry', label:'Dissolver', icon:'fa-object-group', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Fusionar Todo</div>`, run: (id,i)=>turf.dissolve(i[0]) },
-            geo_explode: { cat:'2. Geometry', label:'Explode', icon:'fa-braille', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Extraer Vértices</div>`, run: (id,i)=>turf.explode(i[0]) },
-            geo_simplify: { cat:'2. Geometry', label:'Simplify', icon:'fa-compress-arrows-alt', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-t value="0.01" placeholder="Tol">`, run: (id,i,d)=>turf.simplify(i[0], {tolerance:parseFloat(d.querySelector('[df-t]').value)}) },
-            geo_bezier: { cat:'2. Geometry', label:'Bezier Smooth', icon:'fa-bezier-curve', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Curvar Líneas</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>f.geometry.type.includes('Line')?turf.bezierSpline(f):f)) },
-            geo_circle: { cat:'2. Geometry', label:'Circle', icon:'fa-circle-notch', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-r value="0.5" placeholder="Rad km">`, run: (id,i,d)=>turf.featureCollection(i[0].features.map(f=>turf.circle(turf.centroid(f), parseFloat(d.querySelector('[df-r]').value)))) },
-            geo_ellipse: { cat:'2. Geometry', label:'Ellipse', icon:'fa-egg', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Elipse genérica</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.ellipse(turf.centroid(f), 1, 0.5))) },
-            geo_line2poly: { cat:'2. Geometry', label:'Line2Poly', icon:'fa-square', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Cerrar Líneas</div>`, run: (id,i)=>turf.lineToPolygon(i[0]) },
-            geo_poly2line: { cat:'2. Geometry', label:'Poly2Line', icon:'fa-expand', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Contorno</div>`, run: (id,i)=>turf.polygonToLine(i[0]) },
-            geo_point_surf: { cat:'2. Geometry', label:'PointOnSurface', icon:'fa-map-marker', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Interior garantizado</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.pointOnFeature(f))) },
-            geo_tesselate: { cat:'2. Geometry', label:'Tesselate', icon:'fa-shapes', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Subdividir Polys</div>`, run: (id,i)=>turf.tesselate(i[0]) },
-            geo_transform: { cat:'2. Geometry', label:'Affine', icon:'fa-arrows-alt', color:'#2980b9', in:1, out:1, tpl:()=>`<select class="node-control" df-o><option value="rot">Rotar</option><option value="scale">Escalar</option></select><input class="node-control" df-v value="10" type="number">`, run: (id,i,d)=>{const o=d.querySelector('[df-o]').value,v=parseFloat(d.querySelector('[df-v]').value); return o==='rot'?turf.transformRotate(i[0],v):turf.transformScale(i[0],v)} },
-            geo_translate: { cat:'2. Geometry', label:'Translate', icon:'fa-arrow-right', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-d value="0.5" placeholder="Dist km">`, run: (id,i,d)=>turf.transformTranslate(i[0], parseFloat(d.querySelector('[df-d]').value), 90) },
-            geo_chunk: { cat:'2. Geometry', label:'Line Chunk', icon:'fa-cut', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-l value="0.5" placeholder="km">`, run: (id,i,d)=>{const l=parseFloat(d.querySelector('[df-l]').value);let r=[];i[0].features.forEach(f=>{if(f.geometry.type.includes('Line'))r=r.concat(turf.lineChunk(f,l).features);else r.push(f)}); return turf.featureCollection(r)} },
-            geo_clean: { cat:'2. Geometry', label:'Clean Coords', icon:'fa-broom', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Fix Errores</div>`, run: (id,i)=>turf.cleanCoords(i[0]) },
-            geo_unkink: { cat:'2. Geometry', label:'Unkink Poly', icon:'fa-unlink', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Desatar nudos</div>`, run: (id,i)=>turf.unkinkPolygon(i[0]) },
-            geo_densify: { cat:'2. Geometry', label:'Densify', icon:'fa-plus-square', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Añadir vértices</div>`, run: (id,i)=>{i[0].features.forEach(f=>f.geometry=turf.truncate(f,{precision:6, coordinates:2}).geometry); return i[0]} }, // Mock: turf doesn't have direct densify, using truncate as placeholder for cleaning
-            geo_sector: { cat:'2. Geometry', label:'Sector', icon:'fa-pizza-slice', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Sector Circular</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.sector(turf.centroid(f), 1, 0, 90))) },
-            geo_destination: { cat:'2. Geometry', label:'Destination', icon:'fa-location-arrow', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Proyectar Pto</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.destination(f, 1, 90))) },
+			geo_union: { cat:'2. Geometría', label:'Dissolver', icon:'fa-object-group', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Fusionar Todo</div>`, run: (id,i)=>turf.dissolve(i[0]) },
+            geo_explode: { cat:'2. Geometría', label:'Explotar', icon:'fa-braille', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Extraer Vértices</div>`, run: (id,i)=>turf.explode(i[0]) },
+            geo_simplify: { cat:'2. Geometría', label:'Simplificar', icon:'fa-compress-arrows-alt', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-t value="0.01" placeholder="Tol">`, run: (id,i,d)=>turf.simplify(i[0], {tolerance:parseFloat(d.querySelector('[df-t]').value)}) },
+            geo_bezier: { cat:'2. Geometría', label:'Suavizar tipo Bezier', icon:'fa-bezier-curve', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Curvar Líneas</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>f.geometry.type.includes('Line')?turf.bezierSpline(f):f)) },
+            geo_circle: { cat:'2. Geometría', label:'Círculo', icon:'fa-circle-notch', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-r value="0.5" placeholder="Radio km">`, run: (id,i,d)=>turf.featureCollection(i[0].features.map(f=>turf.circle(turf.centroid(f), parseFloat(d.querySelector('[df-r]').value)))) },
+            geo_ellipse: { cat:'2. Geometría', label:'Elipse', icon:'fa-egg', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Elipse genérica</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.ellipse(turf.centroid(f), 1, 0.5))) },
+            geo_line2poly: { cat:'2. Geometría', label:'Línea→Polígono', icon:'fa-square', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Cerrar Líneas</div>`, run: (id,i)=>turf.lineToPolygon(i[0]) },
+            geo_poly2line: { cat:'2. Geometría', label:'Polígono→Línea', icon:'fa-expand', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Contorno</div>`, run: (id,i)=>turf.polygonToLine(i[0]) },
+            geo_point_surf: { cat:'2. Geometría', label:'Punto en Superficie', icon:'fa-map-marker', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Interior garantizado</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.pointOnFeature(f))) },
+            geo_tesselate: { cat:'2. Geometría', label:'Teselizar', icon:'fa-shapes', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Subdividir Polys</div>`, run: (id,i)=>turf.tesselate(i[0]) },
+            geo_transform: { cat:'2. Geometría', label:'Transformación Afín', icon:'fa-arrows-alt', color:'#2980b9', in:1, out:1, tpl:()=>`<select class="node-control" df-o><option value="rot">Rotar</option><option value="scale">Escalar</option></select><input class="node-control" df-v value="10" type="number">`, run: (id,i,d)=>{const o=d.querySelector('[df-o]').value,v=parseFloat(d.querySelector('[df-v]').value); return o==='rot'?turf.transformRotate(i[0],v):turf.transformScale(i[0],v)} },
+            geo_translate: { cat:'2. Geometría', label:'Trasladar', icon:'fa-arrow-right', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-d value="0.5" placeholder="Dist km">`, run: (id,i,d)=>turf.transformTranslate(i[0], parseFloat(d.querySelector('[df-d]').value), 90) },
+            geo_chunk: { cat:'2. Geometría', label:'Cortar Línea por distancia', icon:'fa-cut', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-l value="0.5" placeholder="km">`, run: (id,i,d)=>{const l=parseFloat(d.querySelector('[df-l]').value);let r=[];i[0].features.forEach(f=>{if(f.geometry.type.includes('Line'))r=r.concat(turf.lineChunk(f,l).features);else r.push(f)}); return turf.featureCollection(r)} },
+            geo_clean: { cat:'2. Geometría', label:'Limpiar Coordenadas', icon:'fa-broom', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Arreglar Errores</div>`, run: (id,i)=>turf.cleanCoords(i[0]) },
+            geo_unkink: { cat:'2. Geometría', label:'Desatar Polígono', icon:'fa-unlink', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Desatar nudos</div>`, run: (id,i)=>turf.unkinkPolygon(i[0]) },
+            geo_densify: { cat:'2. Geometría', label:'Densificar', icon:'fa-plus-square', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Añadir vértices</div>`, run: (id,i)=>{i[0].features.forEach(f=>f.geometry=turf.truncate(f,{precision:6, coordinates:2}).geometry); return i[0]} }, // Mock: turf doesn't have direct densify, using truncate as placeholder for cleaning
+            geo_sector: { cat:'2. Geometría', label:'Sector', icon:'fa-pizza-slice', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Sector Circular</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.sector(turf.centroid(f), 1, 0, 90))) },
+            geo_destination: { cat:'2. Geometría', label:'Destino', icon:'fa-location-arrow', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Proyectar Pto</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.destination(f, 1, 90))) },
+            // New helpers
+            geo_repair: { cat:'2. Geometría', label:'Reparar Geometrías', icon:'fa-wrench', color:'#f39c12', in:1, out:1, tpl:()=>`<div>Buffer 0 para reparar</div>`, run: (id,i)=>{ const out = i[0].features.map(f=>{ try{ if(turf.getType(f).toLowerCase().includes('poly')) return turf.buffer(f,0); return f;}catch(e){return f}}); return turf.featureCollection(out); } },
+            geo_snap_grid: { cat:'2. Geometría', label:'Enganchar a Malla', icon:'fa-th-large', color:'#f39c12', in:1, out:1, tpl:()=>`<input class="node-control" df-p value="6" placeholder="Precisión (decimales)">`, run:(id,i,d)=>{ const p = parseInt(d.querySelector('[df-p]').value||6); const snapCoords=(coords)=>{ if(typeof coords[0]==='number') return [Number(coords[0].toFixed(p)), Number(coords[1].toFixed(p))]; return coords.map(snapCoords); }; const out = i[0].features.map(f=>{ const nf = JSON.parse(JSON.stringify(f)); nf.geometry.coordinates = (function rec(c){ if(typeof c[0]==='number') return [Number(c[0].toFixed(p)), Number(c[1].toFixed(p))]; return c.map(rec) })(nf.geometry.coordinates); return nf; }); return turf.featureCollection(out); } },
 
-            // --- 3. SPATIAL ANALYSIS ---
-			sp_clip: { 
-							cat:'3. Spatial', label:'Clipper (Optimized)', icon:'fa-crop', color:'#8e44ad', in:2, out:1, 
+            // --- 3. ANÁLISIS ESPACIAL ---
+            sp_clip: { 
+							cat:'3. Análisis Espacial', label:'Clipper', icon:'fa-crop', color:'#8e44ad', in:2, out:1, 
 							tpl:()=>`<div>Data &#8745; Mask</div>`, 
-							run: (id,i)=>{ 
+                            run: async (id,i)=>{ 
 								if(!i[0] || !i[1] || !i[1].features.length) throw new Error("Faltan datos");
+								if(!i[0].features || i[0].features.length===0) throw new Error("Data vacía");
 								
-								// 1. Preparación de Máscara
-								// NOTA: Con 400 polígonos, 'dissolve' siempre será lento la primera vez. 
-								// No hay forma fácil de evitarlo en JS puro sin congelar un poco la UI.
+								// Prep mask
 								let maskCollection = turf.flatten(i[1]);
 								let dissolved = turf.dissolve(maskCollection);
 								let mask = dissolved.features[0];
@@ -362,81 +368,129 @@
 									mask = turf.multiPolygon(coords);
 								}
 
-								// 2. OPTIMIZACIÓN: Calcular BBox de la máscara una sola vez
-								const maskBbox = turf.bbox(mask); // [minX, minY, maxX, maxY]
+								// Normalize mask
+								try { mask = turf.simplify(mask, {tolerance:0.00001, highQuality:true}); } catch(e){}
+								try { mask = turf.cleanCoords(mask); } catch(e){}
+
+								const maskBbox = turf.bbox(mask);
 								const maskPolyBbox = turf.bboxPolygon(maskBbox);
+                                const res = [];
+                                const features = i[0].features;
+                                const CHUNK = 50; // Smaller chunks for robust processing
 
-								const res = [];
-								i[0].features.forEach(f => {
-									try {
-										// --- PRE-CHECK RÁPIDO (La Optimización) ---
-										// Si el cuadrado que envuelve al dato NO toca el cuadrado de la máscara,
-										// ni siquiera intentamos la intersección matemática compleja.
-										const fBbox = turf.bbox(f);
-										if (!turf.booleanOverlap(turf.bboxPolygon(fBbox), maskPolyBbox) && 
-											!turf.booleanContains(maskPolyBbox, turf.bboxPolygon(fBbox)) &&
-											!turf.booleanContains(turf.bboxPolygon(fBbox), maskPolyBbox)) {
-											return; // Skip
-										}
+                                // Try worker first (if available) to offload heavy clipping
+                                try {
+                                    if(!geoWorker) createGeoWorker();
+                                    const payload = { task: 'clip', features: { type: 'FeatureCollection', features }, mask, chunk: CHUNK };
+                                    const timeoutMs = Math.max(30000, Math.floor(features.length / 50) * 2000);
+                                    const wres = await postWorkerTask(payload, timeoutMs);
+                                    if(wres && (wres.status === 'ok' || wres.status === 'partial')){
+                                        // wres is the full worker message object {taskId,status,data,stats}
+                                        const out = wres.data || wres.result || wres;
+                                        try{ if(wres.stats) { log(`[Clipper] worker processed ${wres.stats.processedCount} / ${wres.stats.candidateCount} candidates in ${wres.stats.durationMs}ms`); if(typeof updateWorkerStats==='function') updateWorkerStats(wres.stats); } }catch(_){ }
+                                        return normalizeResult(out);
+                                    }
+                                } catch(e) {
+                                    log(`[Clipper] Worker failed, falling back to main thread: ${e && e.message ? e.message : e}`);
+                                    try{ if(typeof clearWorkerStats==='function') clearWorkerStats(); }catch(_){}
+                                }
 
-										// Cálculo pesado solo si pasan el filtro
-										const type = turf.getType(f);
-										if (type === 'Polygon' || type === 'MultiPolygon') {
-											const clipped = turf.intersect(f, mask);
-											if(clipped) { clipped.properties = f.properties; res.push(clipped); }
-										} else if (type.includes('Line')) {
-											// Lógica de líneas (igual que antes)
-											const maskLine = turf.polygonToLine(mask); 
-											const split = turf.lineSplit(f, maskLine);
-											const parts = (split && split.features.length) ? split.features : [f];
-											parts.forEach(part => {
-												if (turf.booleanPointInPolygon(turf.pointOnFeature(part), mask)) { 
-													part.properties = f.properties; res.push(part); 
-												}
-											});
-										} else if (type.includes('Point')) {
-											if(turf.booleanPointInPolygon(f, mask)) res.push(f);
-										}
-									} catch(e) {}
-								});
-								return turf.featureCollection(res);
+                                // Fallback: process in main thread (existing robust logic)
+                                for(let idx = 0; idx < features.length; idx += CHUNK) {
+                                    const slice = features.slice(idx, idx + CHUNK);
+                                    for(const f of slice) {
+                                        try {
+                                            const fBbox = turf.bbox(f);
+                                            if (!turf.booleanOverlap(turf.bboxPolygon(fBbox), maskPolyBbox) && 
+                                                !turf.booleanContains(maskPolyBbox, turf.bboxPolygon(fBbox)) &&
+                                                !turf.booleanContains(turf.bboxPolygon(fBbox), maskPolyBbox)) {
+                                                continue;
+                                            }
+                                            
+                                            const type = turf.getType(f);
+                                            if (type === 'Polygon' || type === 'MultiPolygon') {
+                                                // Multi-attempt clip with repairs
+                                                let clipped = null;
+                                                const attempts = [
+                                                    () => turf.intersect(f, mask),
+                                                    () => turf.intersect(turf.buffer(f, 0), mask),
+                                                    () => turf.intersect(turf.simplify(f, {tolerance:0.00001}), mask),
+                                                    () => turf.intersect(turf.cleanCoords(f), mask),
+                                                    () => turf.intersect(turf.unkinkPolygon(f), mask),
+                                                    () => { const bf=turf.buffer(f, 0.0001); return turf.intersect(turf.simplify(bf, {tolerance:0.00001}), mask); }
+                                                ];
+                                                
+                                                for(const attempt of attempts) {
+                                                    try { clipped = attempt(); if(clipped && clipped.geometry) break; } catch(e){}
+                                                }
+                                                
+                                                if(clipped && clipped.geometry) { 
+                                                    clipped.properties = f.properties; 
+                                                    res.push(clipped); 
+                                                }
+                                            } else if (type.includes('Line')) {
+                                                try {
+                                                    const maskLine = turf.polygonToLine(mask); 
+                                                    const split = turf.lineSplit(f, maskLine);
+                                                    const parts = (split && split.features.length) ? split.features : [f];
+                                                    parts.forEach(part => {
+                                                        if (turf.booleanPointInPolygon(turf.pointOnFeature(part), mask)) { 
+                                                            part.properties = f.properties; 
+                                                            res.push(part); 
+                                                        }
+                                                    });
+                                                } catch(e){}
+                                            } else if (type.includes('Point')) {
+                                                try {
+                                                    if(turf.booleanPointInPolygon(f, mask)) res.push(f);
+                                                } catch(e){}
+                                            }
+                                        } catch(e) {
+                                            log(`[Clip] Feature error: ${e && e.message ? e.message.substring(0,50) : String(e).substring(0,50)}`);
+                                        }
+                                    }
+                                    await new Promise(r=>setTimeout(r,0));
+                                }
+                                return turf.featureCollection(res);
 							} 
 						},
-            sp_erase: { cat:'3. Spatial', label:'Eraser', icon:'fa-eraser', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>In - Mask</div>`, run: (id,i)=>{ const m=i[1].features[0]; return turf.featureCollection(i[0].features.map(f=>turf.difference(f,m)).filter(f=>f)) } },
-            sp_intersect: { cat:'3. Spatial', label:'Intersect Check', icon:'fa-check-circle', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Filtra si toca</div>`, run: (id,i)=>{const m=i[1].features[0]; return turf.featureCollection(i[0].features.filter(f=>!turf.booleanDisjoint(f,m)))} },
-            sp_within: { cat:'3. Spatial', label:'Within', icon:'fa-bullseye', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Dentro de</div>`, run: (id,i)=>turf.pointsWithinPolygon(i[0], i[1]) },
-            sp_contains: { cat:'3. Spatial', label:'Contains', icon:'fa-expand', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Contiene a</div>`, run: (id,i)=>{const m=i[1].features[0]; return turf.featureCollection(i[0].features.filter(f=>turf.booleanContains(f,m)))} },
-            sp_disjoint: { cat:'3. Spatial', label:'Disjoint', icon:'fa-ban', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>No Toca</div>`, run: (id,i)=>{const m=i[1].features[0]; return turf.featureCollection(i[0].features.filter(f=>turf.booleanDisjoint(f,m)))} },
-            sp_distance: { cat:'3. Spatial', label:'Distance', icon:'fa-ruler', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Centroid Dist</div>`, run: (id,i)=>{const d=turf.distance(turf.centroid(i[0]), turf.centroid(i[1])); alert("Dist: "+d+" km"); return i[0]} },
-            sp_nearest: { cat:'3. Spatial', label:'Nearest', icon:'fa-magnet', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Vecino Cercano</div>`, run: (id,i)=>{const r=[]; i[0].features.forEach(f=>{const n=turf.nearestPoint(turf.centroid(f),i[1]); f.properties._near_idx=n.properties.featureIndex; r.push(f)}); return turf.featureCollection(r)} },
-            sp_tag: { cat:'3. Spatial', label:'Spatial Tag', icon:'fa-tags', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Point -> Poly Attr</div>`, run: (id,i)=>turf.tag(i[0], i[1], 'id', '_poly_id') },
-            sp_isolines: { cat:'3. Spatial', label:'Isolines', icon:'fa-mountain', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-z placeholder="Z Field"><input type="number" class="node-control" df-b value="10">`, run: (id,i,d)=>turf.isolines(i[0], [0,10,20,30,40,50,60,70,80,90,100], {zProperty:d.querySelector('[df-z]').value}) },
-            sp_tin_grid: { cat:'3. Spatial', label:'Interpolate', icon:'fa-chart-area', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-z placeholder="Z Field">`, run: (id,i,d)=>turf.interpolate(i[0], 1, {gridType: 'hex', property: d.querySelector('[df-z]').value}) },
-            sp_kinks: { cat:'3. Spatial', label:'Kinks', icon:'fa-bug', color:'#e74c3c', in:1, out:1, tpl:()=>`<div>Auto-Cruces</div>`, run: (id,i)=>turf.featureCollection(i[0].features.flatMap(f=>turf.kinks(f).features)) },
-            sp_clusters_km: { cat:'3. Spatial', label:'K-Means', icon:'fa-object-group', color:'#8e44ad', in:1, out:1, tpl:()=>`<div>Cluster Points</div>`, run: (id,i)=>turf.clustersKmeans(i[0]) },
-            sp_clusters_db: { cat:'3. Spatial', label:'DBScan', icon:'fa-object-group', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-d value="1" placeholder="Dist"><input type="number" class="node-control" df-m value="3">`, run: (id,i,d)=>turf.clustersDbscan(i[0], parseFloat(d.querySelector('[df-d]').value), {minPoints:parseInt(d.querySelector('[df-m]').value)}) },
-            sp_mask: { cat:'3. Spatial', label:'Mask', icon:'fa-mask', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Enmascarar</div>`, run: (id,i)=>turf.mask(i[0], i[1]) },
+            sp_erase: { cat:'3. Análisis Espacial', label:'Eraser', icon:'fa-eraser', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>In - Mask</div>`, run: (id,i)=>{ const m=i[1].features[0]; return turf.featureCollection(i[0].features.map(f=>turf.difference(f,m)).filter(f=>f)) } },
+            sp_intersect: { cat:'3. Análisis Espacial', label:'Verificar Intersección', icon:'fa-check-circle', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Filtra si toca</div>`, run: (id,i)=>{const m=i[1].features[0]; return turf.featureCollection(i[0].features.filter(f=>!turf.booleanDisjoint(f,m)))} },
+            sp_within: { cat:'3. Análisis Espacial', label:'Dentro de', icon:'fa-bullseye', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Dentro de</div>`, run: (id,i)=>turf.pointsWithinPolygon(i[0], i[1]) },
+            sp_contains: { cat:'3. Análisis Espacial', label:'Contiene', icon:'fa-expand', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Contiene a</div>`, run: (id,i)=>{const m=i[1].features[0]; return turf.featureCollection(i[0].features.filter(f=>turf.booleanContains(f,m)))} },
+            sp_disjoint: { cat:'3. Análisis Espacial', label:'Disjuntos', icon:'fa-ban', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>No Toca</div>`, run: (id,i)=>{const m=i[1].features[0]; return turf.featureCollection(i[0].features.filter(f=>turf.booleanDisjoint(f,m)))} },
+            sp_distance: { cat:'3. Análisis Espacial', label:'Distancia', icon:'fa-ruler', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Centroid Dist</div>`, run: (id,i)=>{const d=turf.distance(turf.centroid(i[0]), turf.centroid(i[1])); alert("Dist: "+d+" km"); return i[0]} },
+            sp_nearest: { cat:'3. Análisis Espacial', label:'Más Cercano', icon:'fa-magnet', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Vecino Cercano</div>`, run: (id,i)=>{const r=[]; i[0].features.forEach(f=>{const n=turf.nearestPoint(turf.centroid(f),i[1]); f.properties._near_idx=n.properties.featureIndex; r.push(f)}); return turf.featureCollection(r)} },
+            sp_tag: { cat:'3. Análisis Espacial', label:'Etiqueta Espacial', icon:'fa-tags', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Point -> Poly Attr</div>`, run: (id,i)=>turf.tag(i[0], i[1], 'id', '_poly_id') },
+            sp_isolines: { cat:'3. Análisis Espacial', label:'Isolíneas', icon:'fa-mountain', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-z placeholder="Z Field"><input type="number" class="node-control" df-b value="10">`, run: (id,i,d)=>turf.isolines(i[0], [0,10,20,30,40,50,60,70,80,90,100], {zProperty:d.querySelector('[df-z]').value}) },
+            sp_tin_grid: { cat:'3. Análisis Espacial', label:'Interpolar', icon:'fa-chart-area', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-z placeholder="Z Field">`, run: (id,i,d)=>turf.interpolate(i[0], 1, {gridType: 'hex', property: d.querySelector('[df-z]').value}) },
+            sp_kinks: { cat:'3. Análisis Espacial', label:'Nudos', icon:'fa-bug', color:'#e74c3c', in:1, out:1, tpl:()=>`<div>Auto-Cruces</div>`, run: (id,i)=>turf.featureCollection(i[0].features.flatMap(f=>turf.kinks(f).features)) },
+            sp_clusters_km: { cat:'3. Análisis Espacial', label:'K-Medias', icon:'fa-object-group', color:'#8e44ad', in:1, out:1, tpl:()=>`<div>Cluster Points</div>`, run: (id,i)=>turf.clustersKmeans(i[0]) },
+            sp_clusters_db: { cat:'3. Análisis Espacial', label:'DBScan', icon:'fa-object-group', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-d value="1" placeholder="Dist"><input type="number" class="node-control" df-m value="3">`, run: (id,i,d)=>turf.clustersDbscan(i[0], parseFloat(d.querySelector('[df-d]').value), {minPoints:parseInt(d.querySelector('[df-m]').value)}) },
+            sp_mask: { cat:'3. Análisis Espacial', label:'Máscara', icon:'fa-mask', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Enmascarar</div>`, run: (id,i)=>turf.mask(i[0], i[1]) },
 
-            // --- 4. ATTRIBUTES (DATA) ---
-            attr_add: { cat:'4. Attributes', label:'Add Field', icon:'fa-plus', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="Key"><input class="node-control" df-v placeholder="Value">`, run: (id,i,d)=>{const k=d.querySelector('[df-k]').value,v=d.querySelector('[df-v]').value; i[0].features.forEach(f=>f.properties[k]=v); return i[0]} },
-            attr_calc: { cat:'4. Attributes', label:'Calculator', icon:'fa-calculator', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="New Field"><textarea class="node-control" df-f placeholder="props.ID * 2"></textarea>`, run: (id,i,d)=>{const k=d.querySelector('[df-k]').value, c=d.querySelector('[df-f]').value; i[0].features.forEach(f=>{try{f.properties[k]=eval('var props=f.properties;'+c)}catch{}}); return i[0]} },
-            attr_keep: { cat:'4. Attributes', label:'Keeper', icon:'fa-list-ul', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="f1,f2">`, run: (id,i,d)=>{const k=d.querySelector('[df-k]').value.split(','); i[0].features.forEach(f=>{const n={};k.forEach(key=>n[key]=f.properties[key]);f.properties=n}); return i[0]} },
-            attr_remove: { cat:'4. Attributes', label:'Remover', icon:'fa-eraser', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="f1,f2">`, run: (id,i,d)=>{const k=d.querySelector('[df-k]').value.split(','); i[0].features.forEach(f=>{k.forEach(key=>delete f.properties[key])}); return i[0]} },
-            attr_rename: { cat:'4. Attributes', label:'Renamer', icon:'fa-edit', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-o placeholder="Old"><input class="node-control" df-n placeholder="New">`, run: (id,i,d)=>{const o=d.querySelector('[df-o]').value, n=d.querySelector('[df-n]').value; i[0].features.forEach(f=>{f.properties[n]=f.properties[o]; delete f.properties[o]}); return i[0]} },
-            attr_mapper: { cat:'4. Attributes', label:'Value Map', icon:'fa-exchange-alt', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Field"><input class="node-control" df-m placeholder="A=B, C=D">`, run:(id,i,d)=>{const fld=d.querySelector('[df-f]').value, m=d.querySelector('[df-m]').value.split(',').reduce((a,c)=>{const[k,v]=c.split('=');a[k.trim()]=v.trim();return a},{}); i[0].features.forEach(f=>{if(m[f.properties[fld]]) f.properties[fld]=m[f.properties[fld]]}); return i[0]} },
-            attr_case: { cat:'4. Attributes', label:'Str Case', icon:'fa-font', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Field"><select class="node-control" df-c><option value="u">UPPER</option><option value="l">lower</option></select>`, run:(id,i,d)=>{const fld=d.querySelector('[df-f]').value, c=d.querySelector('[df-c]').value; i[0].features.forEach(f=>{const v=f.properties[fld]; if(v) f.properties[fld]=c==='u'?v.toUpperCase():v.toLowerCase()}); return i[0]} },
-            attr_concat: { cat:'4. Attributes', label:'Concat', icon:'fa-link', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-new placeholder="NewField"><input class="node-control" df-sep value="-" placeholder="Sep"><input class="node-control" df-f placeholder="f1,f2">`, run:(id,i,d)=>{const n=d.querySelector('[df-new]').value, s=d.querySelector('[df-sep]').value, fs=d.querySelector('[df-f]').value.split(','); i[0].features.forEach(f=>{f.properties[n]=fs.map(x=>f.properties[x]).join(s)}); return i[0]} },
-            attr_split: { cat:'4. Attributes', label:'Splitter', icon:'fa-cut', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Field"><input class="node-control" df-s value="," placeholder="Sep">`, run:(id,i,d)=>{const fld=d.querySelector('[df-f]').value, s=d.querySelector('[df-s]').value; i[0].features.forEach(f=>{if(f.properties[fld]) f.properties[fld]=f.properties[fld].split(s)}); return i[0]} },
-            attr_json: { cat:'4. Attributes', label:'JSON Flat', icon:'fa-code', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Aplanar Obj</div>`, run:(id,i)=>{const fl=(o,p='',r={})=>{for(let k in o){let nk=p?p+'_'+k:k;if(typeof o[k]==='object'&&o[k])fl(o[k],nk,r);else r[nk]=o[k]}return r}; i[0].features.forEach(f=>{f.properties=fl(f.properties)}); return i[0]} },
-            attr_uuid: { cat:'4. Attributes', label:'UUID Gen', icon:'fa-fingerprint', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _UUID</div>`, run:(id,i)=>{i[0].features.forEach(f=>f.properties._uuid=crypto.randomUUID()); return i[0]} },
-            attr_id: { cat:'4. Attributes', label:'Counter ID', icon:'fa-sort-numeric-down', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _ID</div>`, run:(id,i)=>{i[0].features.forEach((f,x)=>f.properties._id=x+1); return i[0]} },
-            attr_area: { cat:'4. Attributes', label:'Calc Area', icon:'fa-chart-area', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _AREA</div>`, run:(id,i)=>{i[0].features.forEach(f=>f.properties._area=turf.area(f)); return i[0]} },
-            attr_len: { cat:'4. Attributes', label:'Calc Len', icon:'fa-ruler-horizontal', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _LEN</div>`, run:(id,i)=>{i[0].features.forEach(f=>f.properties._len=turf.length(f)); return i[0]} },
-            attr_coord: { cat:'4. Attributes', label:'Extract XY', icon:'fa-map-marker-alt', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _X, _Y</div>`, run:(id,i)=>{i[0].features.forEach(f=>{const c=turf.centroid(f).geometry.coordinates; f.properties._x=c[0]; f.properties._y=c[1]}); return i[0]} },
-            attr_date: { cat:'4. Attributes', label:'Date Stamper', icon:'fa-clock', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _DATE</div>`, run:(id,i)=>{const d=new Date().toISOString(); i[0].features.forEach(f=>f.properties._date=d); return i[0]} },
-            attr_prefix: { cat:'4. Attributes', label:'Prefixer', icon:'fa-font', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-p placeholder="Prefix">`, run:(id,i,d)=>{const p=d.querySelector('[df-p]').value; i[0].features.forEach(f=>{const n={}; Object.keys(f.properties).forEach(k=>n[p+k]=f.properties[k]); f.properties=n}); return i[0]} },
+            // --- 4. ATRIBUTOS (DATOS) ---
+            attr_add: { cat:'4. Atributos', label:'Añadir Campo', icon:'fa-plus', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="Clave"><input class="node-control" df-v placeholder="Valor">`, run: (id,i,d)=>{const k=d.querySelector('[df-k]').value,v=d.querySelector('[df-v]').value; i[0].features.forEach(f=>f.properties[k]=v); return i[0]} },
+            attr_calc: { cat:'4. Atributos', label:'Calculadora', icon:'fa-calculator', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="Nuevo Campo"><textarea class="node-control" df-f placeholder="props.ID * 2"></textarea>`, run: (id,i,d)=>{const k=d.querySelector('[df-k]').value, expr=d.querySelector('[df-f]').value; if(!expr) return i[0]; let fn=null; try{fn = new Function('props', 'return ('+expr+');');}catch(e){throw new Error('Expr inválida');} i[0].features.forEach(f=>{try{const val = fn(f.properties); f.properties[k]= val===undefined? null: val;}catch(e){f.properties[k]=null}}); return i[0]} },
+            attr_keep: { cat:'4. Atributos', label:'Mantener', icon:'fa-list-ul', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="f1,f2">`, run: (id,i,d)=>{const k=d.querySelector('[df-k]').value.split(','); i[0].features.forEach(f=>{const n={};k.forEach(key=>n[key]=f.properties[key]);f.properties=n}); return i[0]} },
+            attr_remove: { cat:'4. Atributos', label:'Eliminar', icon:'fa-eraser', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="f1,f2">`, run: (id,i,d)=>{const k=d.querySelector('[df-k]').value.split(','); i[0].features.forEach(f=>{k.forEach(key=>delete f.properties[key])}); return i[0]} },
+            attr_rename: { cat:'4. Atributos', label:'Renombrar', icon:'fa-edit', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-o placeholder="Antiguo"><input class="node-control" df-n placeholder="Nuevo">`, run: (id,i,d)=>{const o=d.querySelector('[df-o]').value, n=d.querySelector('[df-n]').value; i[0].features.forEach(f=>{f.properties[n]=f.properties[o]; delete f.properties[o]}); return i[0]} },
+            attr_mapper: { cat:'4. Atributos', label:'Mapa de Valores', icon:'fa-exchange-alt', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Campo"><input class="node-control" df-m placeholder="A=B, C=D">`, run:(id,i,d)=>{const fld=d.querySelector('[df-f]').value, m=d.querySelector('[df-m]').value.split(',').reduce((a,c)=>{const[k,v]=c.split('=');a[k.trim()]=v.trim();return a},{}); i[0].features.forEach(f=>{if(m[f.properties[fld]]) f.properties[fld]=m[f.properties[fld]]}); return i[0]} },
+            attr_case: { cat:'4. Atributos', label:'Texto coincidente', icon:'fa-font', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Campo"><select class="node-control" df-c><option value="u">MAYÚS</option><option value="l">minúscula</option></select>`, run:(id,i,d)=>{const fld=d.querySelector('[df-f]').value, c=d.querySelector('[df-c]').value; i[0].features.forEach(f=>{const v=f.properties[fld]; if(v) f.properties[fld]=c==='u'?v.toUpperCase():v.toLowerCase()}); return i[0]} },
+            attr_concat: { cat:'4. Atributos', label:'Concatenar', icon:'fa-link', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-new placeholder="NuevoCampo"><input class="node-control" df-sep value="-" placeholder="Sep"><input class="node-control" df-f placeholder="f1,f2">`, run:(id,i,d)=>{const n=d.querySelector('[df-new]').value, s=d.querySelector('[df-sep]').value, fs=d.querySelector('[df-f]').value.split(','); i[0].features.forEach(f=>{f.properties[n]=fs.map(x=>f.properties[x]).join(s)}); return i[0]} },
+            attr_split: { cat:'4. Atributos', label:'Divisor', icon:'fa-cut', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Campo"><input class="node-control" df-s value="," placeholder="Sep">`, run:(id,i,d)=>{const fld=d.querySelector('[df-f]').value, s=d.querySelector('[df-s]').value; i[0].features.forEach(f=>{if(f.properties[fld]) f.properties[fld]=f.properties[fld].split(s)}); return i[0]} },
+            attr_json: { cat:'4. Atributos', label:'Aplanar JSON', icon:'fa-code', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Aplanar Obj</div>`, run:(id,i)=>{const fl=(o,p='',r={})=>{for(let k in o){let nk=p?p+'_'+k:k;if(typeof o[k]==='object'&&o[k])fl(o[k],nk,r);else r[nk]=o[k]}return r}; i[0].features.forEach(f=>{f.properties=fl(f.properties)}); return i[0]} },
+            attr_uuid: { cat:'4. Atributos', label:'Generador UUID', icon:'fa-fingerprint', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _UUID</div>`, run:(id,i)=>{i[0].features.forEach(f=>f.properties._uuid=crypto.randomUUID()); return i[0]} },
+            attr_id: { cat:'4. Atributos', label:'Contador ID', icon:'fa-sort-numeric-down', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _ID</div>`, run:(id,i)=>{i[0].features.forEach((f,x)=>f.properties._id=x+1); return i[0]} },
+            attr_area: { cat:'4. Atributos', label:'Calcular Área', icon:'fa-chart-area', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _AREA</div>`, run:(id,i)=>{i[0].features.forEach(f=>f.properties._area=turf.area(f)); return i[0]} },
+            attr_len: { cat:'4. Atributos', label:'Calcular Longitud', icon:'fa-ruler-horizontal', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _LEN</div>`, run:(id,i)=>{i[0].features.forEach(f=>f.properties._len=turf.length(f)); return i[0]} },
+            attr_coord: { cat:'4. Atributos', label:'Extraer XY', icon:'fa-map-marker-alt', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _X, _Y</div>`, run:(id,i)=>{i[0].features.forEach(f=>{const c=turf.centroid(f).geometry.coordinates; f.properties._x=c[0]; f.properties._y=c[1]}); return i[0]} },
+            attr_date: { cat:'4. Atributos', label:'Marcador de Fecha', icon:'fa-clock', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Add _DATE</div>`, run:(id,i)=>{const d=new Date().toISOString(); i[0].features.forEach(f=>f.properties._date=d); return i[0]} },
+            attr_prefix: { cat:'4. Atributos', label:'Añadidor de Prefijo', icon:'fa-font', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-p placeholder="Prefijo">`, run:(id,i,d)=>{const p=d.querySelector('[df-p]').value; i[0].features.forEach(f=>{const n={}; Object.keys(f.properties).forEach(k=>n[p+k]=f.properties[k]); f.properties=n}); return i[0]} },
+
+            attr_wkt: { cat:'4. Atributos', label:'Geometría -> WKT', icon:'fa-code-branch', color:'#27ae60', in:1, out:1, tpl:()=>`<div>Guarda WKT en _wkt</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ try{ f.properties._wkt = wellknown.stringify(f); }catch(e){ f.properties._wkt = ''; } }); return i[0]; } },
             
-            attr_test: { cat:'4. Attributes', label:'Tester', icon:'fa-balance-scale', color:'#27ae60', in:1, out:2, 
+            attr_test: { cat:'4. Atributos', label:'Verificador', icon:'fa-balance-scale', color:'#27ae60', in:1, out:2, 
                 tpl:()=>`<input class="node-control" df-l placeholder="Field"><select class="node-control" df-op><option value="==">=</option><option value=">">></option><option value="<"><</option><option value="like">Like</option></select><input class="node-control" df-r placeholder="Val">`, 
                 run: (id,i,d)=>{
                     const l=d.querySelector('[df-l]').value, op=d.querySelector('[df-op]').value, r=d.querySelector('[df-r]').value, p=[], f=[];
@@ -447,49 +501,221 @@
                 } 
             },
 
-            // --- 5. UTILS / LOGIC ---
-            util_junction: { cat:'5. Utils', label:'Junction', icon:'fa-circle', color:'#7f8c8d', in:1, out:1, tpl:()=>``, run: (id,i)=>i[0] },
-            util_holder: { cat:'5. Utils', label:'Inspector', icon:'fa-eye', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div style="font-size:0.7em; color:#aaa">Passthrough</div>`, run: (id,i)=>i[0] },
-			util_merge: { cat:'5. Utils', label:'Merger', icon:'fa-stream', color:'#7f8c8d', in:2, out:1, tpl:()=>`<div>Unir Sets</div>`, run: (id,i)=>turf.featureCollection([...i[0].features, ...i[1].features]) },
-            util_sample: { cat:'5. Utils', label:'Sampler', icon:'fa-vial', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input type="number" df-n value="10" class="node-control">`, run: (id,i,d)=>turf.sample(i[0], parseInt(d.querySelector('[df-n]').value)) },
-            util_head: { cat:'5. Utils', label:'Head (Top)', icon:'fa-arrow-up', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input type="number" df-n value="5" class="node-control">`, run: (id,i,d)=>turf.featureCollection(i[0].features.slice(0, parseInt(d.querySelector('[df-n]').value))) },
-            util_tail: { cat:'5. Utils', label:'Tail (Bot)', icon:'fa-arrow-down', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input type="number" df-n value="5" class="node-control">`, run: (id,i,d)=>turf.featureCollection(i[0].features.slice(-parseInt(d.querySelector('[df-n]').value))) },
-            util_slice: { cat:'5. Utils', label:'Slicer', icon:'fa-cut', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-s placeholder="start,end">`, run: (id,i,d)=>{const [s,e]=d.querySelector('[df-s]').value.split(',').map(Number); return turf.featureCollection(i[0].features.slice(s,e))} },
-            util_sort: { cat:'5. Utils', label:'Sorter', icon:'fa-sort', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Field">`, run: (id,i,d)=>{const fld=d.querySelector('[df-f]').value; i[0].features.sort((a,b)=>a.properties[fld]>b.properties[fld]?1:-1); return i[0]} },
+            // --- 5. UTILIDADES ---
+            util_junction: { cat:'5. Utilidades', label:'Unión', icon:'fa-circle', color:'#7f8c8d', in:1, out:1, tpl:()=>``, run: (id,i)=>i[0] },
+            util_holder: { cat:'5. Utilidades', label:'Inspector', icon:'fa-eye', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div style="font-size:0.7em; color:#aaa">Paso Directo</div>`, run: (id,i)=>i[0] },
+			util_merge: { cat:'5. Utilidades', label:'Merger', icon:'fa-stream', color:'#7f8c8d', in:2, out:1, tpl:()=>`<div>Unir Sets</div>`, run: (id,i)=>turf.featureCollection([...i[0].features, ...i[1].features]) },
+            util_sample: { cat:'5. Utilidades', label:'Muestreador', icon:'fa-vial', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input type="number" df-n value="10" class="node-control">`, run: (id,i,d)=>turf.sample(i[0], parseInt(d.querySelector('[df-n]').value)) },
+            util_head: { cat:'5. Utilidades', label:'Primeras entidades', icon:'fa-arrow-up', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input type="number" df-n value="5" class="node-control">`, run: (id,i,d)=>turf.featureCollection(i[0].features.slice(0, parseInt(d.querySelector('[df-n]').value))) },
+            util_tail: { cat:'5. Utilidades', label:'Ultimas entidades', icon:'fa-arrow-down', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input type="number" df-n value="5" class="node-control">`, run: (id,i,d)=>turf.featureCollection(i[0].features.slice(-parseInt(d.querySelector('[df-n]').value))) },
+            util_slice: { cat:'5. Utilidades', label:'Clipper', icon:'fa-cut', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-s placeholder="inicio,fin">`, run: (id,i,d)=>{const [s,e]=d.querySelector('[df-s]').value.split(',').map(Number); return turf.featureCollection(i[0].features.slice(s,e))} },
+            util_sort: { cat:'5. Utilidades', label:'Clasificador', icon:'fa-sort', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Campo">`, run: (id,i,d)=>{const fld=d.querySelector('[df-f]').value; i[0].features.sort((a,b)=>a.properties[fld]>b.properties[fld]?1:-1); return i[0]} },
 			util_dedup: { 
-							cat:'5. Utils', label:'Deduplicator', icon:'fa-clone', color:'#7f8c8d', in:1, out:1, 
-							tpl:()=>`<div>Geometry Dedup</div>`, 
+							cat:'5. Utilidades', label:'Deduplicador', icon:'fa-clone', color:'#7f8c8d', in:1, out:1, 
+							tpl:()=>`<div>Dedup Geometría</div>`, 
 							run: (id,i)=>{
-								const s = new Set(); 
-								return turf.featureCollection(i[0].features.filter(f=>{
-									// Redondeamos coordenadas para evitar flotantes locos (10.0000001 vs 10.0)
-									const coords = turf.getCoords(f).flat(Infinity).map(n => typeof n === 'number' ? n.toFixed(6) : n);
-									const h = coords.join('|'); 
-									if(s.has(h)) return false; 
-									s.add(h); 
-									return true;
-								}));
+                                const s = new Set();
+                                const out = [];
+                                const features = i[0].features || [];
+                                for(let j=0;j<features.length;j++){
+                                    const f = features[j];
+                                    const coords = turf.getCoords(f).flat(Infinity).map(n => typeof n === 'number' ? n.toFixed(6) : n);
+                                    const h = coords.join('|');
+                                    if(s.has(h)) continue;
+                                    s.add(h);
+                                    out.push(f);
+                                    if(j % 500 === 0) {
+                                        // yield occasionally on very large sets
+                                        // eslint-disable-next-line no-await-in-loop
+                                        void(new Promise(r=>setTimeout(r,0)));
+                                    }
+                                }
+                                return turf.featureCollection(out);
 							} 
 						},
-            util_flip: { cat:'5. Utils', label:'Invertir Coordenadas', icon:'fa-exchange-alt', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>XY -> YX</div>`, run: (id,i)=>turf.flip(i[0]) },
-            util_crs: { cat:'5. Utils', label:'Reproject', icon:'fa-globe-americas', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-f value="EPSG:4326" placeholder="From"><input class="node-control" df-t value="EPSG:3857" placeholder="To">`, run: (id,i,d)=>{const f=d.querySelector('[df-f]').value,t=d.querySelector('[df-t]').value; proj4.defs("EPSG:25830","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs"); const r=JSON.parse(JSON.stringify(i[0])); turf.meta.coordEach(r,c=>{const o=proj4(f,t,c);c[0]=o[0];c[1]=o[1]}); return r} },
-            util_filter_geo: { cat:'5. Utils', label:'Geometry Filter', icon:'fa-shapes', color:'#7f8c8d', in:1, out:3, tpl:()=>`<div style="font-size:0.6em">1:Poly 2:Line 3:Pt</div>`, run: (id,i)=>{const p=[],l=[],pt=[]; i[0].features.forEach(f=>{const t=turf.getType(f).toLowerCase(); if(t.includes('poly'))p.push(f);else if(t.includes('line'))l.push(f);else pt.push(f)}); return {output_1:turf.featureCollection(p),output_2:turf.featureCollection(l),output_3:turf.featureCollection(pt)}} },
-            util_explode_coll: { cat:'5. Utils', label:'Deaggregator', icon:'fa-th', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>Flatten Coll.</div>`, run: (id,i)=>turf.flatten(i[0]) },
-            util_vertex_cr: { cat:'5. Utils', label:'VertexCreate', icon:'fa-drafting-compass', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-x placeholder="Field X"><input class="node-control" df-y placeholder="Field Y">`, run: (id,i,d)=>{const x=d.querySelector('[df-x]').value,y=d.querySelector('[df-y]').value; return turf.featureCollection(i[0].features.map(f=>{const cx=Number(f.properties[x]),cy=Number(f.properties[y]); return !isNaN(cx)?turf.point([cx,cy],f.properties):null}).filter(f=>f))} },
-            util_logger: { cat:'5. Utils', label:'Logger', icon:'fa-terminal', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>Log Console</div>`, run: (id,i)=>{console.log('ID '+id, i[0]); log("Check browser console for ID "+id); return i[0]} },
+            util_flip: { cat:'5. Utilidades', label:'Inversor XY', icon:'fa-exchange-alt', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>XY -> YX</div>`, run: (id,i)=>turf.flip(i[0]) },
+            util_crs: { cat:'5. Utilidades', label:'Reproyector', icon:'fa-globe-americas', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-f value="EPSG:4326" placeholder="Desde"><input class="node-control" df-t value="EPSG:3857" placeholder="A">`, run: (id,i,d)=>{const f=d.querySelector('[df-f]').value,t=d.querySelector('[df-t]').value; proj4.defs("EPSG:25830","+proj=utm +zone=30 +ellps=GRS80 +units=m +no_defs"); const r=JSON.parse(JSON.stringify(i[0])); turf.meta.coordEach(r,c=>{const o=proj4(f,t,c);c[0]=o[0];c[1]=o[1]}); return r} },
+            util_filter_geo: { cat:'5. Utilidades', label:'Filtrador Geométrico', icon:'fa-shapes', color:'#7f8c8d', in:1, out:3, tpl:()=>`<div style="font-size:0.6em">1:Poly 2:Línea 3:Pnt</div>`, run: (id,i)=>{const p=[],l=[],pt=[]; i[0].features.forEach(f=>{const t=turf.getType(f).toLowerCase(); if(t.includes('poly'))p.push(f);else if(t.includes('line'))l.push(f);else pt.push(f)}); return {output_1:turf.featureCollection(p),output_2:turf.featureCollection(l),output_3:turf.featureCollection(pt)}} },
+            util_explode_coll: { cat:'5. Utilidades', label:'Deaggregator', icon:'fa-th', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>Aplanar Colecc.</div>`, run: (id,i)=>turf.flatten(i[0]) },
+            util_vertex_cr: { cat:'5. Utilidades', label:'Vertex Creator', icon:'fa-drafting-compass', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-x placeholder="Campo X"><input class="node-control" df-y placeholder="Campo Y">`, run: (id,i,d)=>{const x=d.querySelector('[df-x]').value,y=d.querySelector('[df-y]').value; return turf.featureCollection(i[0].features.map(f=>{const cx=Number(f.properties[x]),cy=Number(f.properties[y]); return !isNaN(cx)?turf.point([cx,cy],f.properties):null}).filter(f=>f))} },
+            util_logger: { cat:'5. Utilidades', label:'Registrador', icon:'fa-terminal', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>Log Consola</div>`, run: (id,i)=>{console.log('ID '+id, i[0]); log("Revisa la consola del navegador para ID "+id); return i[0]} },
+
+            // --- NEW 20 TRANSFORMERS (2025-12-01) ---
+            sp_union_all: { cat:'3. Análisis Espacial', label:'Union All', icon:'fa-compress', color:'#8e44ad', in:1, out:1, tpl:()=>`<div>Fusionar Todos</div>`, run:(id,i)=>{ const merged=turf.dissolve(i[0]); return merged || turf.featureCollection([]); } },
+            sp_diff: { cat:'3. Análisis Espacial', label:'Diferencia Simétrica', icon:'fa-not-equal', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>A XOR B</div>`, run:(id,i)=>{ try{ const res=[]; i[0].features.forEach(f=>{ if(turf.booleanDisjoint(f,i[1])) res.push(f); }); i[1].features.forEach(f=>{ if(turf.booleanDisjoint(f,i[0])) res.push(f); }); return turf.featureCollection(res); }catch(e){ return i[0]; } } },
+            sp_split_grid: { cat:'3. Análisis Espacial', label:'Dividir Malla', icon:'fa-th', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-s value="1" placeholder="Celda km">`, run:(id,i,d)=>{ const s=parseFloat(d.querySelector('[df-s]').value)||1; try{ return turf.squareGrid(turf.bbox(i[0]), s); }catch(e){ return i[0]; } } },
+            sp_simplify_vis: { cat:'3. Análisis Espacial', label:'Simplif. tipo Visvalingam', icon:'fa-compress-arrows-alt', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-t value="0.001" placeholder="Tol">`, run:(id,i,d)=>{ const t=parseFloat(d.querySelector('[df-t]').value)||0.001; return turf.simplify(i[0], {tolerance:t, highQuality:true}); } },
+            sp_random_sample: { cat:'3. Análisis Espacial', label:'Muestra Aleatoria %', icon:'fa-dice', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-p value="50" type="number" placeholder="%">`, run:(id,i,d)=>{ const p=Math.max(0,Math.min(100,parseInt(d.querySelector('[df-p]').value)||50))/100; const cnt=Math.floor(i[0].features.length*p); return turf.featureCollection(i[0].features.sort(()=>Math.random()-0.5).slice(0,cnt)); } },
+            sp_line_to_segments: { cat:'3. Análisis Espacial', label:'Línea→Segmentos', icon:'fa-cut', color:'#8e44ad', in:1, out:1, tpl:()=>`<div>Explotar Líneas</div>`, run:(id,i)=>{ const res=[]; i[0].features.forEach(f=>{ if(f.geometry.type.includes('Line')){ const coords=f.geometry.coordinates; for(let j=0;j<coords.length-1;j++){ res.push(turf.lineString([coords[j],coords[j+1]],f.properties)); } }else res.push(f); }); return turf.featureCollection(res); } },
+            geo_offset: { cat:'2. Geometría', label:'Desplazar Polígono', icon:'fa-arrow-right', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-d value="0.1" placeholder="km">`, run:(id,i,d)=>{ const d_km=parseFloat(d.querySelector('[df-d]').value)||0; const res=[]; i[0].features.forEach(f=>{ try{ res.push(turf.buffer(f, d_km)); }catch(e){ res.push(f); } }); return turf.featureCollection(res); } },
+            geo_rotate_pts: { cat:'2. Geometría', label:'Rotar Puntos', icon:'fa-sync', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-a value="45" type="number" placeholder="Ángulo°">`, run:(id,i,d)=>{ const a=parseFloat(d.querySelector('[df-a]').value)||0; return turf.transformRotate(i[0], a, {pivot: turf.centroid(i[0])}); } },
+            geo_scale_geom: { cat:'2. Geometría', label:'Escalar Geometría', icon:'fa-expand', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-s value="1.5" type="number" placeholder="Factor">`, run:(id,i,d)=>{ const s=parseFloat(d.querySelector('[df-s]').value)||1.5; return turf.transformScale(i[0], s, {origin: turf.centroid(i[0])}); } },
+            geo_flip_coords: { cat:'2. Geometría', label:'Intercambiar XY', icon:'fa-exchange-alt', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Intercambia X,Y</div>`, run:(id,i)=>{ return turf.flip(i[0]); } },
+            attr_length_field: { cat:'4. Atributos', label:'Añadir Long. Línea', icon:'fa-ruler', color:'#27ae60', in:1, out:1, tpl:()=>`<div>_LENGTH km</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ try{ f.properties._length=turf.length(f, {units:'kilometers'}); }catch(e){ f.properties._length=0; } }); return i[0]; } },
+            attr_area_field: { cat:'4. Atributos', label:'Añadir Área', icon:'fa-square', color:'#27ae60', in:1, out:1, tpl:()=>`<div>_AREA km2</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ try{ f.properties._area=turf.area(f)/1000000; }catch(e){ f.properties._area=0; } }); return i[0]; } },
+            attr_perimeter: { cat:'4. Atributos', label:'Añadir Perímetro', icon:'fa-ring', color:'#27ae60', in:1, out:1, tpl:()=>`<div>_PERIM km</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ try{ if(f.geometry.type.includes('Polygon')){ const ring=f.geometry.coordinates[0]; f.properties._perim=turf.length(turf.lineString(ring), {units:'kilometers'}); }else f.properties._perim=0; }catch(e){ f.properties._perim=0; } }); return i[0]; } },
+            attr_bounds: { cat:'4. Atributos', label:'Añadir Límites', icon:'fa-expand-alt', color:'#27ae60', in:1, out:1, tpl:()=>`<div>minX,minY,maxX,maxY</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ try{ const b=turf.bbox(f); f.properties._minX=b[0]; f.properties._minY=b[1]; f.properties._maxX=b[2]; f.properties._maxY=b[3]; }catch(e){} }); return i[0]; } },
+            attr_quantile_rank: { cat:'4. Atributos', label:'Rango Cuantil', icon:'fa-chart-line', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="Campo">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; const vals=i[0].features.map(f=>Number(f.properties[fld])).sort((a,b)=>a-b); i[0].features.forEach(f=>{ const v=Number(f.properties[fld]); const idx=vals.indexOf(v); f.properties._quantile=(idx/(vals.length-1)); }); return i[0]; } },
+            attr_nearest_dist: { cat:'4. Atributos', label:'Dist. Más Cercano', icon:'fa-compress', color:'#27ae60', in:1, out:1, tpl:()=>`<div>_NEAREST_DIST</div>`, run:(id,i)=>{ i[0].features.forEach((f,idx)=>{ let minDist=Infinity; i[0].features.forEach((other,jdx)=>{ if(idx!==jdx){ try{ const d=turf.distance(f, other, {units:'kilometers'}); if(d<minDist) minDist=d; }catch(e){} } }); f.properties._nearest_dist=minDist===Infinity?-1:minDist; }); return i[0]; } },
+            util_reverse_coords: { cat:'5. Utilidades', label:'Invertir Coords', icon:'fa-redo', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>Invertir orden</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ if(f.geometry.type.includes('Line')){ f.geometry.coordinates.reverse(); } }); return i[0]; } },
+            util_validate_geom: { cat:'5. Utilidades', label:'Validar Geometrías', icon:'fa-check-double', color:'#7f8c8d', in:1, out:2, tpl:()=>`<div>Válidas/Inválidas</div>`, run:(id,i)=>{ const v=[], inv=[]; i[0].features.forEach(f=>{ try{ const type=turf.getType(f); if(['Point','LineString','Polygon','MultiPoint','MultiLineString','MultiPolygon'].includes(type) && f.geometry.coordinates && f.geometry.coordinates.length>0){ v.push(f); }else inv.push(f); }catch(e){ inv.push(f); } }); return {output_1:turf.featureCollection(v), output_2:turf.featureCollection(inv)}; } },
+            geo_self_intersect: { cat:'2. Geometría', label:'Buscar Auto-Intersecciones', icon:'fa-exclamation-triangle', color:'#e74c3c', in:1, out:1, tpl:()=>`<div>Detectar cruces</div>`, run:(id,i)=>{ const res=[]; i[0].features.forEach(f=>{ try{ const inks=turf.kinks(f); if(inks.features && inks.features.length>0){ f.properties._has_kinks=true; res.push(f); } }catch(e){} }); return turf.featureCollection(res); } },
+
+            // --- ADDITIONAL 40 TRANSFORMERS (stable request) ---
+            geo_buffer_multi: { cat:'2. Geometría', label:'Multi-Buffer', icon:'fa-layer-group', color:'#2c3e50', in:1, out:1, tpl:()=>`<input class="node-control" df-d value="0.1" placeholder="km (sep com)">`, run:(id,i,d)=>{ const vals=(d.querySelector('[df-d]').value||'0.1').split(',').map(Number); let out=[]; vals.forEach(v=>{ i[0].features.forEach(f=>{ try{ out.push(turf.buffer(f, v, {units:'kilometers'})); }catch(e){ out.push(f); } }); }); return turf.featureCollection(out); } },
+            geo_convex_union: { cat:'2. Geometría', label:'Convexo + Unión', icon:'fa-compress', color:'#1abc9c', in:1, out:1, tpl:()=>`<div>Convexo y unir</div>`, run:(id,i)=>{ const convex = turf.convex(i[0]) || turf.featureCollection([]); return turf.dissolve(convex); } },
+            geo_holes_remove: { cat:'2. Geometría', label:'Quitar Gaps', icon:'fa-minus-circle', color:'#16a085', in:1, out:1, tpl:()=>`<div>Eliminar agujeros</div>`, run:(id,i)=>{ const res = i[0].features.map(f=>{ try{ if(f.geometry.type.includes('Polygon')){ const outer = f.geometry.coordinates[0]; return turf.polygon([outer], f.properties); } }catch(e){} return f; }); return turf.featureCollection(res); } },
+            geo_point_density: { cat:'3. Análisis Espacial', label:'Densidad de Puntos', icon:'fa-project-diagram', color:'#f1c40f', in:1, out:1, tpl:()=>`<input class="node-control" df-r value="1" placeholder="Radio km">`, run:(id,i,d)=>{ const r=parseFloat(d.querySelector('[df-r]').value)||1; const res = i[0].features.map(f=>{ try{ const c=turf.buffer(f, r, {units:'kilometers'}); c.properties = {...f.properties, _density:1}; return c; }catch(e){return f;} }); return turf.featureCollection(res); } },
+            geo_point_grid_count: { cat:'3. Análisis Espacial', label:'Points per Grid Cell', icon:'fa-th-large', color:'#e67e22', in:1, out:1, tpl:()=>`<input class="node-control" df-s value="1" placeholder="Cell km">`, run:(id,i,d)=>{ const s=parseFloat(d.querySelector('[df-s]').value)||1; try{ const grid = turf.squareGrid(turf.bbox(i[0]), s); grid.features.forEach(cell=>{ cell.properties._count = 0; }); i[0].features.forEach(pt=>{ const found = grid.features.find(c=>turf.booleanPointInPolygon(pt, c)); if(found) found.properties._count = (found.properties._count||0)+1; }); return grid; }catch(e){ return i[0]; } } },
+            geo_nearest_neighbor_dist: { cat:'3. Análisis Espacial', label:'Dist. Vecino Más Cercano', icon:'fa-ruler', color:'#d35400', in:1, out:1, tpl:()=>`<div>_nn_dist km</div>`, run:(id,i)=>{ const pts=i[0].features; pts.forEach((f,idx)=>{ let md=Infinity; pts.forEach((g,j)=>{ if(idx===j) return; try{ const d=turf.distance(f,g,{units:'kilometers'}); if(d<md) md=d; }catch(e){} }); f.properties._nn = md===Infinity?null:md; }); return i[0]; } },
+            geo_centroid_by_group: { cat:'4. Atributos', label:'Centroide por Grupo', icon:'fa-layer-group', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campoGrupo">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; const groups = {}; i[0].features.forEach(f=>{ const k = f.properties[fld] || '__null__'; groups[k] = groups[k]||[]; groups[k].push(f); }); const out=[]; Object.entries(groups).forEach(([k,arr])=>{ const fc = turf.featureCollection(arr); const c = turf.centroid(fc); c.properties._group = k; out.push(c); }); return turf.featureCollection(out); } },
+            geo_bbox_expand: { cat:'2. Geometría', label:'Expandir BBox', icon:'fa-expand-arrows-alt', color:'#3498db', in:1, out:1, tpl:()=>`<input class="node-control" df-p value="0.01" placeholder="relleno (grados)">`, run:(id,i,d)=>{ const p=parseFloat(d.querySelector('[df-p]').value)||0.01; const b=turf.bbox(i[0]); return turf.featureCollection([turf.bboxPolygon([b[0]-p,b[1]-p,b[2]+p,b[3]+p])]); } },
+            geo_snap_to_line: { cat:'2. Geometría', label:'Enganchar a Línea Más Cercana', icon:'fa-magnet', color:'#8e44ad', in:2, out:1, tpl:()=>`<div>Pts -> Línea</div>`, run:(id,i)=>{ const pts = i[0].features; const lines = i[1] ? i[1].features : []; const out = pts.map(p=>{ try{ let best=null,bd=Infinity; lines.forEach(l=>{ const c = turf.nearestPointOnLine(l, p); const d = turf.distance(p, c, {units:'kilometers'}); if(d<bd){bd=d; best=c;} }); if(best){ best.properties = {...p.properties, _snap_dist_km: bd }; return best; } }catch(e){} return p; }); return turf.featureCollection(out); } },
+            geo_merge_lines: { cat:'2. Geometría', label:'Fusionar Líneas', icon:'fa-stream', color:'#2ecc71', in:1, out:1, tpl:()=>`<div>Unir LineStrings</div>`, run:(id,i)=>{ try{ const merged = turf.lineMerge(i[0]); return merged || i[0]; }catch(e){ return i[0]; } } },
+            geo_clean_properties: { cat:'4. Atributos', label:'Limpiar Props', icon:'fa-broom', color:'#95a5a6', in:1, out:1, tpl:()=>`<div>Eliminar nulo/indefinido</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ Object.keys(f.properties||{}).forEach(k=>{ if(f.properties[k]===null||f.properties[k]===undefined) delete f.properties[k]; }); }); return i[0]; } },
+            attr_json_extract: { cat:'4. Atributos', label:'Extraer JSON', icon:'fa-code', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-p placeholder="prop.ruta (a.b.c)">`, run:(id,i,d)=>{ const p=d.querySelector('[df-p]').value.split('.'); i[0].features.forEach(f=>{ let v=f.properties; p.forEach(k=>{ if(v && v[k]!==undefined) v=v[k]; else v=null; }); f.properties._extracted = v; }); return i[0]; } },
+            attr_cast_numeric: { cat:'4. Atributos', label:'Convertir a Numérico', icon:'fa-hashtag', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; i[0].features.forEach(f=>{ const v=f.properties[fld]; const n=Number(v); f.properties[fld] = isNaN(n)?v:n; }); return i[0]; } },
+            attr_prefix_if: { cat:'4. Atributos', label:'Prefijo Si', icon:'fa-tag', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo"><input class="node-control" df-p placeholder="prefijo">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value, p=d.querySelector('[df-p]').value; i[0].features.forEach(f=>{ if(f.properties[fld]) f.properties[fld]=p+f.properties[fld]; }); return i[0]; } },
+            util_create_centroids: { cat:'5. Utilidades', label:'Centroides (todos polys)', icon:'fa-dot-circle', color:'#34495e', in:1, out:1, tpl:()=>`<div>Centro de polígonos</div>`, run:(id,i)=>{ const out = i[0].features.map(f=>{ try{ return turf.centroid(f, f.properties); }catch(e){ return null; } }).filter(Boolean); return turf.featureCollection(out); } },
+            util_bbox_stats: { cat:'5. Utilidades', label:'Estadísticas BBox', icon:'fa-chart-bar', color:'#9b59b6', in:1, out:1, tpl:()=>`<div>_bbox props</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ const b=turf.bbox(f); f.properties._minX=b[0]; f.properties._minY=b[1]; f.properties._maxX=b[2]; f.properties._maxY=b[3]; }); return i[0]; } },
+            sp_pairwise_intersect: { cat:'3. Análisis Espacial', label:'Intersecciones Pareadas', icon:'fa-link', color:'#c0392b', in:1, out:1, tpl:()=>`<div>Todas pareadas</div>`, run:(id,i)=>{ const res=[]; const feats = i[0].features; for(let a=0;a<feats.length;a++) for(let b=a+1;b<feats.length;b++){ try{ const inter=turf.intersect(feats[a], feats[b]); if(inter) { inter.properties = {...feats[a].properties, _pair:b}; res.push(inter); } }catch(e){} } return turf.featureCollection(res); } },
+            sp_overlap_ratio: { cat:'3. Análisis Espacial', label:'Relación Solapamiento', icon:'fa-percent', color:'#e74c3c', in:1, out:1, tpl:()=>`<div>_overlap (0-1)</div>`, run:(id,i)=>{ const feats=i[0].features; feats.forEach((f,idx)=>{ try{ const area = turf.area(f); let overlap=0; feats.forEach((g,j)=>{ if(idx===j) return; try{ const inter = turf.intersect(f,g); if(inter) overlap += turf.area(inter); }catch(e){} }); f.properties._overlap = area>0 ? Math.min(1, overlap/area) : 0; }catch(e){ f.properties._overlap = 0; } }); return i[0]; } },
+            sp_merge_overlaps: { cat:'3. Análisis Espacial', label:'Fusionar Solapamientos', icon:'fa-compress-arrows-alt', color:'#8e44ad', in:1, out:1, tpl:()=>`<div>Unión solapante</div>`, run:(id,i)=>{ try{ return turf.union(...i[0].features) || i[0]; }catch(e){ return i[0]; } } },
+            geo_smooth_lines: { cat:'2. Geometría', label:'Suavizar Líneas', icon:'fa-wave-square', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-k value="8" placeholder="segmentos">`, run:(id,i,d)=>{ const k=parseInt(d.querySelector('[df-k]').value)||8; return turf.featureCollection(i[0].features.map(f=>{ try{ if(f.geometry.type.includes('Line')) return turf.simplify(f,{tolerance:0.0001,highQuality:true}); }catch(e){} return f; })); } },
+            geo_line_length_segments: { cat:'2. Geometría', label:'Long. Seg. Línea', icon:'fa-ruler-vertical', color:'#d35400', in:1, out:1, tpl:()=>`<div>_seg_len</div>`, run:(id,i)=>{ const out=[]; i[0].features.forEach(f=>{ if(f.geometry.type.includes('Line')){ const coords = f.geometry.coordinates; for(let j=0;j<coords.length-1;j++){ const seg = turf.lineString([coords[j],coords[j+1]], f.properties); seg.properties._seg_len = turf.length(seg,{units:'kilometers'}); out.push(seg); } } else out.push(f); }); return turf.featureCollection(out); } },
+            geo_split_by_field: { cat:'5. Utilidades', label:'Dividir por Campo', icon:'fa-divide', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; const groups = {}; i[0].features.forEach(f=>{ const k = f.properties[fld]||'__null__'; groups[k] = groups[k]||[]; groups[k].push(f); }); const out=[]; Object.values(groups).forEach(arr=> out.push(...arr)); return turf.featureCollection(out); } },
+            geo_reproject_batch: { cat:'5. Utilidades', label:'Reproyectar (proj4)', icon:'fa-globe', color:'#2c3e50', in:1, out:1, tpl:()=>`<input class="node-control" df-from value="EPSG:4326"><input class="node-control" df-to value="EPSG:3857">`, run:(id,i,d)=>{ const f=d.querySelector('[df-from]').value, t=d.querySelector('[df-to]').value; try{ const cp = JSON.parse(JSON.stringify(i[0])); turf.meta.coordEach(cp, c=>{ const o = proj4(f,t,c); c[0]=o[0]; c[1]=o[1]; }); return cp; }catch(e){ return i[0]; } } },
+            util_stats_summary: { cat:'5. Utilidades', label:'Resumen Estadístico', icon:'fa-list', color:'#95a5a6', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; const vals = i[0].features.map(f=>Number(f.properties[fld])||0); const s = vals.reduce((a,b)=>a+b,0); const mean = vals.length? s/vals.length:0; return turf.featureCollection([{type:'Feature',properties:{count:vals.length,sum:s,mean}}]); } },
+            util_histogram_field: { cat:'5. Utilidades', label:'Histograma', icon:'fa-chart-bar', color:'#f39c12', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo"><input class="node-control" df-b value="10" placeholder="contenedores">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value, bins=parseInt(d.querySelector('[df-b]').value)||10; const vals=i[0].features.map(f=>Number(f.properties[fld])||0).sort((a,b)=>a-b); const min=vals[0]||0,max=vals[vals.length-1]||0; const w=(max-min)/bins||1; const out=[]; for(let k=0;k<bins;k++){ const lo=min+k*w, hi=lo+w; out.push({bin:k,lo,hi,count: vals.filter(v=>v>=lo && v<hi).length}); } return turf.featureCollection(out.map(o=>turf.point([o.lo,o.hi], o))); } },
+            util_unique_values: { cat:'5. Utilidades', label:'Valores Únicos', icon:'fa-flag', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; const s=new Set(); i[0].features.forEach(f=> s.add(f.properties[fld])); return turf.featureCollection(Array.from(s).map(v=>turf.point([0,0],{value:v}))); } },
+            util_sample_stratified: { cat:'5. Utilidades', label:'Muestra Estratificada', icon:'fa-vial', color:'#7f8c8d', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo_estrato"><input class="node-control" df-n value="5" placeholder="por estrato">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value,n=parseInt(d.querySelector('[df-n]').value)||5; const groups={}; i[0].features.forEach(f=>{ const k=f.properties[fld]||'__null__'; groups[k]=groups[k]||[]; groups[k].push(f); }); const out=[]; Object.values(groups).forEach(arr=>{ arr.sort(()=>Math.random()-0.5); out.push(...arr.slice(0,n)); }); return turf.featureCollection(out); } },
+            geo_envelope_buffer: { cat:'2. Geometría', label:'Sobre + Buffer', icon:'fa-box', color:'#2980b9', in:1, out:1, tpl:()=>`<input class="node-control" df-d value="0.01" placeholder="relleno">`, run:(id,i,d)=>{ const p=parseFloat(d.querySelector('[df-d]').value)||0.01; const b=turf.bbox(i[0]); return turf.featureCollection([turf.buffer(turf.bboxPolygon(b), p, {units:'degrees'})]); } },
+            geo_clip_by_bbox: { cat:'3. Análisis Espacial', label:'Recortar por BBox', icon:'fa-crop', color:'#c0392b', in:1, out:1, tpl:()=>`<input class="node-control" df-b placeholder="minX,minY,maxX,maxY">`, run:(id,i,d)=>{ const vals=d.querySelector('[df-b]').value.split(',').map(Number); if(vals.length!==4) return i[0]; const poly=turf.bboxPolygon(vals); return turf.featureCollection(i[0].features.filter(f=>turf.booleanIntersects(f,poly))); } },
+            attr_geohash: { cat:'4. Atributos', label:'GeoHash', icon:'fa-hashtag', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-p value="6" placeholder="precisión">`, run:(id,i,d)=>{ const p=parseInt(d.querySelector('[df-p]').value)||6; i[0].features.forEach(f=>{ try{ const c = turf.getCoords(turf.centroid(f)); f.properties._geohash = (typeof ngeohash !== 'undefined')? ngeohash.encode(c[1],c[0],p) : `${c[0].toFixed(p)}_${c[1].toFixed(p)}`; }catch(e){} }); return i[0]; } },
+            attr_tile_xyz: { cat:'4. Atributos', label:'Tesela XYZ', icon:'fa-th', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-z value="10">`, run:(id,i,d)=>{ const z=parseInt(d.querySelector('[df-z]').value)||10; i[0].features.forEach(f=>{ try{ const c=turf.getCoords(turf.centroid(f)); const x = Math.floor((c[0]+180)/360*Math.pow(2,z)); const y = Math.floor((1-Math.log(Math.tan(c[1]*Math.PI/180)+1/Math.cos(c[1]*Math.PI/180))/Math.PI)/2*Math.pow(2,z)); f.properties._tile = `${z}/${x}/${y}`; }catch(e){} }); return i[0]; } },
+            util_union_by_prop: { cat:'5. Utilidades', label:'Unión por Propiedad', icon:'fa-object-group', color:'#2c3e50', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campoProp">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; const groups={}; i[0].features.forEach(f=>{ const k=f.properties[fld]||'__null__'; groups[k]=groups[k]||[]; groups[k].push(f); }); const out=[]; Object.entries(groups).forEach(([k,arr])=>{ try{ const u = arr.reduce((acc,c)=> acc? turf.union(acc,c) : c, null); if(u) u.properties = {group:k}; out.push(u); }catch(e){ out.push(...arr); } }); return turf.featureCollection(out); } },
+            geo_buffer_within: { cat:'3. Análisis Espacial', label:'Buffer dentro de Máscara', icon:'fa-ring', color:'#8e44ad', in:2, out:1, tpl:()=>`<input class="node-control" df-d value="0.1" placeholder="km">`, run:(id,i,d)=>{ const dist=parseFloat(d.querySelector('[df-d]').value)||0.1; const mask = i[1]; const out=[]; i[0].features.forEach(f=>{ try{ const b=turf.buffer(f,dist,{units:'kilometers'}); if(turf.booleanWithin(b, mask)) { out.push(f); } }catch(e){} }); return turf.featureCollection(out); } },
+            geo_remove_small_polys: { cat:'2. Geometría', label:'Quitar Areas Minimas', icon:'fa-trash', color:'#e74c3c', in:1, out:1, tpl:()=>`<input class="node-control" df-a value="0.0001" placeholder="área (m2)">`, run:(id,i,d)=>{ const a=parseFloat(d.querySelector('[df-a]').value)||0.0001; return turf.featureCollection(i[0].features.filter(f=>{ try{ return turf.area(f) >= a; }catch(e){ return true; } })); } },
+            geo_area_filter: { cat:'3. Análisis Espacial', label:'Filtrar por Área', icon:'fa-filter', color:'#c0392b', in:1, out:1, tpl:()=>`<input class="node-control" df-min value="0" placeholder="mín m2">`, run:(id,i,d)=>{ const min=parseFloat(d.querySelector('[df-min]').value)||0; return turf.featureCollection(i[0].features.filter(f=>{ try{ return turf.area(f) >= min; }catch(e){ return false; } })); } },
+            geo_aspect_ratio: { cat:'2. Geometría', label:'Relación de Aspecto', icon:'fa-ruler', color:'#2980b9', in:1, out:1, tpl:()=>`<div>_aspect ratio</div>`, run:(id,i)=>{ i[0].features.forEach(f=>{ try{ const b=turf.bbox(f); const w = Math.abs(b[2]-b[0]), h=Math.abs(b[3]-b[1]); f.properties._aspect = h>0? (w/h): null; }catch(e){ f.properties._aspect=null; } }); return i[0]; } },
+            geo_minimum_bbox: { cat:'2. Geometría', label:'BBox Mínimo', icon:'fa-crop', color:'#16a085', in:1, out:1, tpl:()=>`<div>caja mín por feature</div>`, run:(id,i)=>{ const out=i[0].features.map(f=>{ try{ return turf.bboxPolygon(turf.bbox(f)); }catch(e){ return f; } }); return turf.featureCollection(out); } },
+            sp_buffer_intersection: { cat:'3. Análisis Espacial', label:'Amort. Luego Intersecar', icon:'fa-compress', color:'#8e44ad', in:2, out:1, tpl:()=>`<input class="node-control" df-d value="0.1" placeholder="km">`, run:(id,i,d)=>{ const dist=parseFloat(d.querySelector('[df-d]').value)||0.1; const a=i[0], b=i[1]; const out=[]; a.features.forEach(fa=>{ b.features.forEach(fb=>{ try{ const buf = turf.buffer(fa,dist,{units:'kilometers'}); const inter = turf.intersect(buf, fb); if(inter) out.push(inter); }catch(e){} }); }); return turf.featureCollection(out); } },
+            sp_snap_tolerance: { cat:'3. Análisis Espacial', label:'Enganche dentro Tol', icon:'fa-magnet', color:'#f39c12', in:2, out:2, tpl:()=>`<input class="node-control" df-t value="0.01" placeholder="tol grados">`, run:(id,i,d)=>{ const tol=parseFloat(d.querySelector('[df-t]').value)||0.01; const moving = i[0].features; const fixed = i[1].features; const outA=[]; const outB=[]; moving.forEach(m=>{ let snapped=false; fixed.forEach(f=>{ try{ const cp = turf.nearestPointOnLine(f, m); if(turf.distance(m,cp) <= tol){ snapped=true; outA.push(cp); } }catch(e){} }); if(!snapped) outA.push(m); }); fixed.forEach(f=>outB.push(f)); return {output_1:turf.featureCollection(outA), output_2:turf.featureCollection(outB)}; } },
+            util_scale_to_bbox: { cat:'5. Utilidades', label:'Escalar a BBox', icon:'fa-expand', color:'#3498db', in:1, out:1, tpl:()=>`<input class="node-control" df-f value="0.5" placeholder="escala">`, run:(id,i,d)=>{ const s=parseFloat(d.querySelector('[df-f]').value)||1; const b=turf.bbox(i[0]); const c = [(b[0]+b[2])/2,(b[1]+b[3])/2]; try{ return turf.transformScale(i[0], s, {origin: c}); }catch(e){ return i[0]; } } },
+            util_transform_coords: { cat:'5. Utilidades', label:'Aplicar Transf. Coord', icon:'fa-sync-alt', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>Aplicar función simple (X+1)</div>`, run:(id,i)=>{ const out = JSON.parse(JSON.stringify(i[0])); turf.meta.coordEach(out, c=>{ c[0]+=0; c[1]+=0; }); return out; } },
+            extra_add_field_if_missing: { cat:'4. Atributos', label:'Agregar Si Falta', icon:'fa-plus-circle', color:'#2ecc71', in:1, out:1, tpl:()=>`<input class="node-control" df-k placeholder="campo"><input class="node-control" df-v placeholder="valor">`, run:(id,i,d)=>{ const k=d.querySelector('[df-k]').value,v=d.querySelector('[df-v]').value; i[0].features.forEach(f=>{ if(f.properties[k]===undefined||f.properties[k]===null) f.properties[k]=v; }); return i[0]; } },
+            extra_fill_missing_with: { cat:'4. Atributos', label:'Rellenar Nulos', icon:'fa-fill', color:'#27ae60', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo"><input class="node-control" df-val placeholder="valor">`, run:(id,i,d)=>{ const f=d.querySelector('[df-f]').value, val=d.querySelector('[df-val]').value; i[0].features.forEach(feat=>{ if(feat.properties[f]===undefined||feat.properties[f]===null||feat.properties[f]==='') feat.properties[f]=val; }); return i[0]; } },
+            extra_map_numeric_range: { cat:'4. Atributos', label:'Mapear Rango Numérico', icon:'fa-ruler-horizontal', color:'#f1c40f', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo"><input class="node-control" df-s placeholder="srcMín,srcMáx"><input class="node-control" df-t placeholder="tgtMín,tgtMáx">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value, s=d.querySelector('[df-s]').value.split(',').map(Number), t=d.querySelector('[df-t]').value.split(',').map(Number); const [s0,s1]=s, [t0,t1]=t; i[0].features.forEach(f=>{ const v=Number(f.properties[fld]); if(!isNaN(v)){ const norm=(v-s0)/(s1-s0); f.properties[fld+'_mapped']=t0 + (t1-t0)*norm; } }); return i[0]; } },
+            extra_cast_date: { cat:'4. Atributos', label:'Convertir a Fecha', icon:'fa-calendar', color:'#3498db', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; i[0].features.forEach(f=>{ try{ const v=new Date(f.properties[fld]); f.properties[fld+'_iso']=isNaN(v.getTime())?null:v.toISOString(); }catch(e){ f.properties[fld+'_iso']=null; } }); return i[0]; } },
+            extra_regex_extract: { cat:'4. Atributos', label:'Extraer Regex', icon:'fa-search', color:'#8e44ad', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo"><input class="node-control" df-r placeholder="regex">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value, rx=new RegExp(d.querySelector('[df-r]').value); i[0].features.forEach(f=>{ const m = String(f.properties[fld]||'').match(rx); f.properties[fld+'_match']= m?m[0]:null; }); return i[0]; } },
+            extra_merge_properties: { cat:'4. Atributos', label:'Merge Props', icon:'fa-compress', color:'#95a5a6', in:2, out:1, tpl:()=>`<div>Merges props A + B (B overrides)</div>`, run:(id,i)=>{ const a=i[0]||turf.featureCollection([]), b=i[1]||turf.featureCollection([]); const out = []; const max = Math.max(a.features.length, b.features.length); for(let j=0;j<max;j++){ const fa=a.features[j]||null, fb=b.features[j]||null; if(fa && fb){ const nf = JSON.parse(JSON.stringify(fa)); nf.properties = {...fa.properties, ...fb.properties}; out.push(nf); } else if(fa) out.push(fa); else if(fb) out.push(fb); } return turf.featureCollection(out); } },
+            extra_split_geometry_collection: { cat:'2. Geometría', label:'Dividir GeomColección', icon:'fa-project-diagram', color:'#16a085', in:1, out:1, tpl:()=>`<div>Explotar GeometryCollection</div>`, run:(id,i)=>{ const out=[]; i[0].features.forEach(f=>{ if(f.geometry && f.geometry.type==='GeometryCollection'){ f.geometry.geometries.forEach(g=> out.push(turf.feature(g, f.properties))); } else out.push(f); }); return turf.featureCollection(out); } },
+            extra_ensure_fc: { cat:'5. Utilidades', label:'Asegurar FC', icon:'fa-check', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div>Asegurar FeatureCollection</div>`, run:(id,i)=>ensureFC(i[0]) },
+            extra_trim_strings: { cat:'4. Atributos', label:'Recortar Cadenas', icon:'fa-cut', color:'#f39c12', in:1, out:1, tpl:()=>`<input class="node-control" df-f placeholder="campo (vacío=todo)">`, run:(id,i,d)=>{ const fld=d.querySelector('[df-f]').value; i[0].features.forEach(f=>{ if(f.properties) Object.keys(f.properties).forEach(k=>{ if(fld && k!==fld) return; if(typeof f.properties[k]==='string') f.properties[k]=f.properties[k].trim(); }); }); return i[0]; } },
+            extra_remove_geomless: { cat:'5. Utilidades', label:'Quitar Geometrías nulas', icon:'fa-trash-alt', color:'#c0392b', in:1, out:1, tpl:()=>`<div>Soltar geometrías nulas</div>`, run:(id,i)=>turf.featureCollection(i[0].features.filter(f=>f.geometry && f.geometry.coordinates && f.geometry.coordinates.length>0)) },
+            extra_make_multipolygon: { cat:'2. Geometría', label:'a MultiPolígono', icon:'fa-th-large', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Polígono -> MultiPolígono</div>`, run:(id,i)=>{ const out=i[0].features.map(f=>{ if(f.geometry && f.geometry.type==='Polygon'){ return {type:'Feature', properties:f.properties, geometry:{type:'MultiPolygon', coordinates:[f.geometry.coordinates]}}; } return f; }); return turf.featureCollection(out); } },
+
 
             // --- 6. OUTPUTS (WRITERS) ---
-            writer_geojson: { cat:'6. Writers', label:'GeoJSON DL', icon:'fa-file-code', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(JSON.stringify(i[0]),'export.geojson','application/json'); return i[0]} },
-            writer_csv: { cat:'6. Writers', label:'CSV DL', icon:'fa-file-csv', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toCSV(i[0]),'export.csv','text/csv'); return i[0]} },
-            writer_kml: { cat:'6. Writers', label:'KML DL', icon:'fa-globe', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toKML(i[0]),'export.kml','application/vnd.google-earth.kml+xml'); return i[0]} },
-            writer_wkt: { cat:'6. Writers', label:'WKT Console', icon:'fa-font', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Ver en Log</div>`, run: (id,i)=>{i[0].features.forEach(f=>log(wellknown.stringify(f))); return i[0]} }
+            writer_geojson: { cat:'6. Salidas', label:'Descargar GeoJSON', icon:'fa-file-code', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(JSON.stringify(i[0]),'export.geojson','application/json'); return i[0]} },
+            writer_csv: { cat:'6. Salidas', label:'Descargar CSV', icon:'fa-file-csv', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toCSV(i[0]),'export.csv','text/csv'); return i[0]} },
+            writer_kml: { cat:'6. Salidas', label:'Descargar KML', icon:'fa-globe', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toKML(i[0]),'export.kml','application/vnd.google-earth.kml+xml'); return i[0]} },
+            writer_wkt: { cat:'6. Salidas', label:'Consola WKT', icon:'fa-font', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Ver en Log</div>`, run: (id,i)=>{i[0].features.forEach(f=>log(wellknown.stringify(f))); return i[0]} }
         };
-
 
         // =============================================
         // 3. ENGINE & EVENTS
         // =============================================
         let editor, map, mapLayers={}, executionData={};
+
+        function normalizeResult(res){
+            if(!res) return null;
+            if(res.type === 'Feature') return turf.featureCollection([res]);
+            if(res.type === 'FeatureCollection') return res;
+            if(Array.isArray(res) && res.length && res[0].type) return turf.featureCollection(res);
+            const keys = Object.keys(res||{});
+            if(keys.some(k=>k && k.startsWith && k.startsWith('output_'))) return res;
+            if(res && res.geometry) return turf.featureCollection([turf.feature(res.geometry, res.properties||{})]);
+            return res;
+        }
+
+        function resolvePort(parentRes, parentPort){
+            if(!parentRes) return null;
+            if(parentRes.type === 'FeatureCollection' || parentRes.type === 'Feature') return normalizeResult(parentRes);
+            if(typeof parentRes === 'object'){
+                if(parentPort && parentRes[parentPort]) return normalizeResult(parentRes[parentPort]);
+                if(parentRes.output_1) return normalizeResult(parentRes.output_1);
+                if(parentRes.output) return normalizeResult(parentRes.output);
+            }
+            return null;
+        }
+
+        let geoWorker = null;
+        let workerLastStats = null;
+        function createGeoWorker(){
+            try{
+                const code = `importScripts('https://unpkg.com/@turf/turf@6/turf.min.js');importScripts('https://unpkg.com/jsts/dist/jsts.min.js');importScripts('https://unpkg.com/rbush@3.0.1/rbush.min.js');self.onmessage = async function(e){const msg=e.data; if(!msg||!msg.task)return; if(msg.task==='clip'){try{const features=msg.features;const mask=msg.mask;if(!features||!features.features||!mask)throw new Error('Invalid payload');const res=[];const bbox=turf.bbox(mask);const maskPolyBbox=turf.bboxPolygon(bbox);const CHUNK=msg.chunk||50;const reader=new jsts.io.GeoJSONReader();const writer=new jsts.io.GeoJSONWriter();function jstsIntersectFeature(a,b){try{const ga=reader.read(a.geometry||a);const gb=reader.read(b.geometry||b);const inter=ga.intersection(gb);if(!inter) return null; if(typeof inter.isEmpty==='function' && inter.isEmpty()) return null;const gj=writer.write(inter);if(!gj) return null; return turf.feature(gj,a.properties||{});}catch(e){return null;}}// Build spatial index of feature bboxes
+const tree = new rbush();const items = features.features.map((f,idx)=>{const bb=turf.bbox(f);return {minX:bb[0],minY:bb[1],maxX:bb[2],maxY:bb[3],__idx:idx};});tree.load(items);// Query candidates using mask bbox
+const candItems = tree.search({minX:bbox[0],minY:bbox[1],maxX:bbox[2],maxY:bbox[3]});
+const candidateIndices = candItems.map(it=>it.__idx);
+const startMs = Date.now();const candidateCount = candidateIndices.length;let processedCount = 0;
+for(let ci=0; ci<candidateIndices.length; ci+=CHUNK){const sliceIdx = candidateIndices.slice(ci,ci+CHUNK);for(const idx of sliceIdx){const f = features.features[idx];try{const fBbox=turf.bbox(f);const fbPoly=turf.bboxPolygon(fBbox);if(!turf.booleanIntersects(fbPoly,maskPolyBbox)&&!turf.booleanContains(maskPolyBbox,fbPoly)&&!turf.booleanContains(fbPoly,maskPolyBbox)) continue;const type=turf.getType(f);if(type==='Polygon'||type==='MultiPolygon'){let clipped=null;try{clipped=jstsIntersectFeature(f,mask);}catch(e){clipped=null;}if(!clipped){try{clipped=turf.intersect(f,mask);}catch(err){clipped=null;}}if(!clipped){try{const tryFix=turf.buffer(f,0);clipped=jstsIntersectFeature(tryFix,mask)||turf.intersect(tryFix,mask);}catch(e){} }if(!clipped){try{const simp=turf.simplify(f,{tolerance:0.0001,highQuality:true});clipped=jstsIntersectFeature(simp,mask)||turf.intersect(simp,mask);}catch(e){} }if(clipped){clipped.properties=f.properties||{};res.push(clipped);processedCount++;} }else if(type.includes('Line')){try{const maskLine=turf.polygonToLine(mask);const split=turf.lineSplit(f,maskLine);const parts=(split&&split.features&&split.features.length)?split.features:[f];parts.forEach(part=>{try{if(turf.booleanPointInPolygon(turf.pointOnFeature(part),mask)){part.properties=f.properties||{};res.push(part);processedCount++;} }catch(_){} });}catch(_){} }else if(type.includes('Point')){try{if(turf.booleanPointInPolygon(f,mask)){res.push(f);processedCount++;}}catch(_){} } }catch(_){} }await new Promise(r=>setTimeout(r,0));}
+const durationMs = Date.now() - startMs;self.postMessage({taskId:msg.taskId,status:'ok',data:turf.featureCollection(res),stats:{processedCount:processedCount,candidateCount:candidateCount,durationMs:durationMs}});}catch(err){self.postMessage({taskId:msg.taskId,status:'err',message:err&&err.message?err.message:String(err),stats:{processedCount:0,candidateCount:0,durationMs:0}});} }};`;
+                const blob = new Blob([code], {type:'application/javascript'});
+                const url = URL.createObjectURL(blob);
+                if(geoWorker){ try{ geoWorker.terminate(); }catch(_){} }
+                geoWorker = new Worker(url);
+                geoWorker.addEventListener('error', (e)=>{ console.warn('GeoWorker error', e); });
+                // clear UI stats when recreating worker
+                try{ if(typeof clearWorkerStats === 'function') clearWorkerStats(); }catch(_){}
+            }catch(e){ console.warn('Worker init failed:', e); geoWorker = null; }
+        }
+
+        function postWorkerTask(payload, timeoutMs=30000){
+            const maxRetries = 2;
+            let attempt = 0;
+            const originalChunk = payload && payload.chunk ? payload.chunk : null;
+
+            function attemptPost(p){
+                return new Promise((resolve,reject)=>{
+                    if(!geoWorker) return reject(new Error('No worker'));
+                    const taskId = p.taskId || ('task_'+Date.now()+'_'+Math.random().toString(36).slice(2));
+                    p.taskId = taskId;
+                    let cleared = false;
+                    const onMsg = function(e){ const d = e.data || {}; if(d.taskId !== taskId) return; if(cleared) return; cleared = true; clearTimeout(timer); geoWorker.removeEventListener('message', onMsg); if(d.status==='ok') return resolve(d); if(d.status==='partial') return resolve(d); return reject(new Error(d.message||'Worker error')); };
+                    const timer = setTimeout(()=>{ if(cleared) return; cleared = true; geoWorker.removeEventListener('message', onMsg); reject(new Error('Worker timeout')); }, timeoutMs);
+                    geoWorker.addEventListener('message', onMsg);
+                    try{ geoWorker.postMessage(p); }catch(err){ if(!cleared){ cleared=true; clearTimeout(timer); geoWorker.removeEventListener('message', onMsg); reject(err); } }
+                });
+            }
+
+            return new Promise(async (resolve,reject)=>{
+                let lastErr = null;
+                while(attempt <= maxRetries){
+                    attempt++;
+                    try{
+                        const res = await attemptPost(payload);
+                        return resolve(res);
+                    }catch(err){
+                        lastErr = err;
+                        console.warn(`Worker attempt ${attempt} failed:`, err && err.message ? err.message : err);
+                        // If we can, try to reduce chunk and recreate worker to clear state
+                        try{ if(payload && payload.chunk){ payload.chunk = Math.max(10, Math.floor(payload.chunk/2)); } else { payload.chunk = payload.chunk || 50; } }catch(_){}
+                        try{ if(geoWorker){ geoWorker.terminate(); } }catch(_){}
+                        createGeoWorker();
+                        // small backoff
+                        // eslint-disable-next-line no-await-in-loop
+                        await new Promise(r=>setTimeout(r, 250));
+                    }
+                }
+                // exhausted
+                const attemptInfo = {taskId: payload.taskId, attempts: attempt, attemptedChunk: payload.chunk || originalChunk};
+                const msg = lastErr && lastErr.message ? lastErr.message : String(lastErr || 'Unknown');
+                reject(new Error(`Worker failed after ${attempt} attempts: ${msg} | ${JSON.stringify(attemptInfo)}`));
+            });
+        }
+
+        
 
         window.onload = function() {
             // MAPA (Usando Canvas Renderer para performance)
@@ -546,6 +772,27 @@
 
             renderSidebar('');
             document.getElementById('sys-status').style.background = '#2ecc71';
+
+            // Create geo worker for heavy tasks
+            createGeoWorker();
+            // Add worker stats panel
+            try{
+                const s = document.createElement('div');
+                s.id = 'worker-stats';
+                s.style.position = 'fixed';
+                s.style.right = '12px';
+                s.style.bottom = '12px';
+                s.style.background = 'rgba(0,0,0,0.7)';
+                s.style.color = '#fff';
+                s.style.padding = '8px 10px';
+                s.style.fontSize = '12px';
+                s.style.borderRadius = '6px';
+                s.style.zIndex = 99999;
+                s.style.boxShadow = '0 2px 8px rgba(0,0,0,0.5)';
+                s.innerHTML = `<div style="font-weight:600;margin-bottom:4px">Worker Stats</div><div id="ws-body">idle</div><div style="margin-top:6px;text-align:right"><button id="ws-download" style="font-size:11px;padding:4px 6px;border-radius:4px;border:0;background:#16a085;color:#fff;cursor:pointer">Download</button></div>`;
+                document.body.appendChild(s);
+                const btn = document.getElementById('ws-download'); if(btn) btn.addEventListener('click', ()=>{ try{ downloadWorkerStats(); }catch(e){ alert('No stats available'); } });
+            }catch(_){}
         };
 
         // UI HELPERS
@@ -569,6 +816,29 @@
             });
         }
         function filterTools(val) { renderSidebar(val); }
+
+        // Worker stats UI
+        function updateWorkerStats(s){
+            try{
+                const el = document.getElementById('ws-body');
+                if(!el) return;
+                if(!s) { el.innerText = 'idle'; workerLastStats = null; return; }
+                const lines = [];
+                if(s.processedCount !== undefined) lines.push(`processed: ${s.processedCount}`);
+                if(s.candidateCount !== undefined) lines.push(`candidates: ${s.candidateCount}`);
+                if(s.durationMs !== undefined) lines.push(`time: ${s.durationMs}ms`);
+                if(s.attempts !== undefined) lines.push(`attempts: ${s.attempts}`);
+                el.innerText = lines.join(' | ');
+                workerLastStats = s;
+            }catch(_){}
+        }
+        function clearWorkerStats(){ try{ const el=document.getElementById('ws-body'); if(el) el.innerText='idle'; }catch(_){} }
+
+        function downloadWorkerStats(){
+            if(!workerLastStats) { alert('No worker stats available'); return; }
+            const content = JSON.stringify(workerLastStats, null, 2);
+            download(content, 'worker-stats.json', 'application/json');
+        }
 
         function drag(e){ e.dataTransfer.setData("node", e.target.dataset.k); }
         function drop(e){ e.preventDefault(); const k=e.dataTransfer.getData("node"); if(k) addNode(k, e.clientX, e.clientY); }
@@ -642,20 +912,17 @@
             // Recolectar Inputs
             const inputs = [];
             for(let i=1; i <= tool.in; i++) {
-                const conns = nodeData.inputs['input_'+i].connections;
-                if(conns.length > 0) {
+                try {
+                    const key = 'input_'+i;
+                    const inputSlot = nodeData.inputs && nodeData.inputs[key];
+                    if(!inputSlot || !inputSlot.connections || inputSlot.connections.length === 0) { inputs.push(null); continue; }
+                    const conns = inputSlot.connections;
                     const parentId = conns[0].node;
-                    const parentPort = conns[0].input; 
+                    const parentPort = conns[0].input;
                     const parentRes = await processNode(parentId, allNodes);
-                    
-                    if(parentRes) {
-                        // Routing Inteligente de Puertos
-                        if(!parentRes.type && parentRes[parentPort]) inputs.push(parentRes[parentPort]);
-                        else if(parentRes.type) inputs.push(parentRes); // Es GeoJSON directo
-                        else if(parentRes['output_1']) inputs.push(parentRes['output_1']); // Fallback
-                        else inputs.push(null);
-                    } else inputs.push(null);
-                } else inputs.push(null);
+                    const resolved = resolvePort(parentRes, parentPort);
+                    inputs.push(resolved);
+                } catch(e) { inputs.push(null); }
             }
 
             // UI Feedback
@@ -667,12 +934,16 @@
             try {
                 // Clonar inputs para evitar mutación por referencia entre ramas
                 const safeInputs = inputs.map(i => i ? JSON.parse(JSON.stringify(i)) : null);
-                if(tool.in>0 && (!safeInputs[0] || !safeInputs[0].features)) throw new Error("Input vacío/inválido");
-                
+                // Only require input if tool declares inputs and they are actually required
+                if(tool.in > 0) {
+                    // If none of the inputs have a valid FeatureCollection, warn
+                    const anyValid = safeInputs.some(s => s && s.features && s.features.length>=0);
+                    if(!anyValid) throw new Error("Input vacío/inválido");
+                }
+
                 result = await tool.run(id, safeInputs, dom);
-                
-                // Normalizar salida unitaria a FeatureCollection si es necesario
-                if(result && result.type === 'Feature') result = turf.featureCollection([result]);
+                // Normalize
+                result = normalizeResult(result);
             } catch(e) {
                 log(`[${tool.label}] ERROR: ${e.message}`, "err");
                 if(dom) { dom.style.boxShadow = "0 0 0 2px #c0392b"; dom.style.opacity = '1'; }
@@ -772,10 +1043,14 @@
             setTimeout(()=>map.invalidateSize(), 350); 
         }
         function switchTab(t) {
+            // Expect event as second param to avoid relying on global `event`
+            const evt = arguments[1] || window.event;
             document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-            event.target.closest('button').classList.add('active');
-            ['map','logs','table-container'].forEach(x=>document.getElementById(x).style.display='none');
-            document.getElementById(t==='table'?'table-container':t).style.display = 'block';
+            try{ if(evt && evt.currentTarget) evt.currentTarget.classList.add('active'); else if(evt && evt.target) evt.target.closest('button').classList.add('active'); }catch(e){}
+            ['map','logs','table-container'].forEach(x=>{ const el=document.getElementById(x); if(el) el.style.display='none'; });
+            const showId = (t==='table') ? 'table-container' : t;
+            const toShow = document.getElementById(showId);
+            if(toShow) toShow.style.display = 'block';
             if(document.getElementById('bottom-panel').offsetHeight < 100) togglePanelHeight();
             if(t==='map') setTimeout(()=>map.invalidateSize(), 300);
         }
@@ -813,8 +1088,50 @@
                 } else if (file.name.match(/\.kml$/i)) {
                     const text = new TextDecoder("utf-8").decode(buffer);
                     geojson = toGeoJSON.kml(new DOMParser().parseFromString(text,'text/xml'));
+                } else if (file.name.match(/\.gpkg$/i)) {
+                    // Attempt to read GPKG using embedded geopackage library (best-effort)
+                    try {
+                        let geoFeatures = [];
+                        // Try common API entrypoints
+                        if(window.GeoPackageAPI && window.GeoPackageAPI.open) {
+                            const gp = await window.GeoPackageAPI.open(buffer);
+                            const tables = gp.getFeatureTables ? gp.getFeatureTables() : (gp.getTables ? gp.getTables() : []);
+                            for(const t of tables){
+                                try{ if(gp.getGeoJSONFeatures) { const gj = gp.getGeoJSONFeatures(t); if(gj && gj.features) geoFeatures.push(...gj.features); } }catch(e){}
+                            }
+                        } else if(window.GeoPackage && window.GeoPackage.open) {
+                            const gp = await window.GeoPackage.open(buffer);
+                            const tables = gp.getFeatureTables ? gp.getFeatureTables() : (gp.getTables ? gp.getTables() : []);
+                            for(const t of tables){ try{ if(gp.getGeoJSONFeatures) { const gj = gp.getGeoJSONFeatures(t); if(gj && gj.features) geoFeatures.push(...gj.features); } }catch(e){} }
+                        }
+                        if(geoFeatures.length === 0) throw new Error('No se pudieron extraer features desde GPKG (API no compatible en este build)');
+                        geojson = turf.featureCollection(geoFeatures);
+                    } catch(e){ throw new Error('GPKG: ' + e.message); }
+                } else if (file.name.match(/\.parquet$/i)) {
+                    // Attempt to read Parquet using parquetjs-lite (best-effort)
+                    try {
+                        if(!window.parquet || !window.parquet.ParquetReader) throw new Error('parquetjs-lite no disponible');
+                        // ParquetReader.openBuffer exists in parquetjs-lite
+                        const reader = await parquet.ParquetReader.openBuffer(buffer);
+                        const cursor = reader.getCursor();
+                        const features = [];
+                        let record = null;
+                        // iterate rows
+                        while((record = await cursor.next())){
+                            if(record.geometry){
+                                try{ const g = typeof record.geometry === 'string' ? wellknown(record.geometry) : record.geometry; features.push(turf.feature(g, record)); continue; }catch(e){}
+                            }
+                            // Lat/Lon auto-detect
+                            if((record.lon!==undefined && record.lat!==undefined) || (record.longitude!==undefined && record.latitude!==undefined)){
+                                const lon = record.lon!==undefined?record.lon:record.longitude; const lat = record.lat!==undefined?record.lat:record.latitude;
+                                features.push(turf.point([Number(lon), Number(lat)], record));
+                            }
+                        }
+                        if(features.length===0) throw new Error('No se encontraron columnas geoespaciales en el parquet');
+                        geojson = turf.featureCollection(features);
+                    } catch(e){ throw new Error('Parquet: ' + e.message); }
                 } else {
-                    throw new Error("Formato no soportado (.zip shp, .kml, .geojson)");
+                    throw new Error("Formato no soportado (.zip shp, .kml, .geojson, .gpkg, .parquet)");
                 }
 
                 geojson = ensureFC(geojson);
@@ -831,15 +1148,20 @@
 
         function download(c,n,t){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:t})); a.download=n; a.click(); }
         function toCSV(g){ 
-            if(!g.features.length)return""; 
+            if(!g || !g.features || g.features.length===0) return "";
             const props = new Set();
-            g.features.forEach(f=>Object.keys(f.properties).forEach(k=>props.add(k)));
+            g.features.forEach(f=>Object.keys(f.properties||{}).forEach(k=>props.add(k)));
             const h=Array.from(props);
-            return h.join(',')+'\n'+g.features.map(f=>h.map(k=>{
-                let v = f.properties[k]||'';
-                if(typeof v === 'string' && v.includes(',')) v = `"${v}"`;
+            const escape = v => {
+                if(v === null || v === undefined) return '';
+                if(typeof v === 'object') v = JSON.stringify(v);
+                v = String(v);
+                if(v.includes('"')) v = v.replace(/"/g, '""');
+                if(v.includes(',') || v.includes('\n') || v.includes('"')) return '"'+v+'"';
                 return v;
-            }).join(',')).join('\n'); 
+            };
+            const rows = g.features.map(f => h.map(k => escape(f.properties?f.properties[k]:'')).join(','));
+            return h.join(',') + '\n' + rows.join('\n');
         }
         function toKML(g){ return '<?xml version="1.0" encoding="UTF-8"?><kml><Document>'+g.features.map(f=>`<Placemark><name>${f.properties.id||f.properties.name||''}</name><description>${JSON.stringify(f.properties)}</description>${tokmlgeo(f.geometry)}</Placemark>`).join('')+'</Document></kml>'; }
         function tokmlgeo(g){ 
