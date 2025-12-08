@@ -1647,7 +1647,7 @@ reader_osm: {
 
     // --- 7. RASTER ---
     sp_point_sampling: {
-        cat: '3. Spatial', label: 'Point Sampler', icon: 'fa-crosshairs', color: '#8e44ad', in: 1, out: 1,
+        cat: '6. Raster', label: 'Point Sampler', icon: 'fa-crosshairs', color: '#8e44ad', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Raster Fuente (.tif)</span>
