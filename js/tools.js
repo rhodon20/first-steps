@@ -100,6 +100,20 @@ reader_osm: {
     // --- 2. GEOMETRY (MANIPULATION) ---
     geo_centroid: { cat:'2. Geometry', label:'CenterPoint', icon:'fa-dot-circle', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Centroide</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centroid(f,{properties:f.properties}))) },
     util_filter_geo: { cat:'5. Utils', label:'Geometry Filter', icon:'fa-shapes', color:'#7f8c8d', in:1, out:3, tpl:()=>`<div style="font-size:0.6em">1:Poly 2:Line 3:Pt</div>`, run: (id,i)=>{const p=[],l=[],pt=[]; i[0].features.forEach(f=>{const t=turf.getType(f).toLowerCase(); if(t.includes('poly'))p.push(f);else if(t.includes('line'))l.push(f);else pt.push(f)}); return {output_1:turf.featureCollection(p),output_2:turf.featureCollection(l),output_3:turf.featureCollection(pt)}} },
+    geo_simplify: { 
+        cat: '2. Geometry', label: 'Simplifier', icon: 'fa-compress-arrows-alt', color: '#2980b9', in: 1, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Tolerancia (Grados)</span>
+                <input type="number" df-tol value="0.0001" step="0.0001" class="node-control">
+            </div>
+            <div style="font-size:0.6em;color:#888">Reduce vértices manteniendo la forma.</div>`,
+        run: (id, inputs, dom) => {
+            const tol = parseFloat(dom.querySelector('[df-tol]').value) || 0.0001;
+            // highQuality: true es más lento pero produce mejores resultados (evita cruces simples)
+            return turf.simplify(inputs[0], {tolerance: tol, highQuality: true, mutate: false});
+        }
+    },
     geo_chunk: { 
         cat: '2. Geometry', label: 'Line Chopper', icon: 'fa-cut', color: '#2980b9', in: 1, out: 1,
         tpl: () => `
