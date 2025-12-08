@@ -5,16 +5,85 @@
 const TOOL_REGISTRY = {
     
     // --- 1. INPUTS / READERS (GENERATORS) ---
-    reader_osm: { cat:'1. Inputs', label:'OSM Reader', icon:'fa-globe', color:'#e67e22', in:0, out:1, 
-        tpl:()=>`<select class="node-control" df-t><option value="building">Edificios</option><option value="highway">Carreteras</option><option value="leisure=park">Parques</option><option value="amenity">Servicios</option><option value="waterway">Agua</option><option value="landuse">Usos suelo</option></select><div style="font-size:0.7em;color:#aaa">Ciudad Aleatoria (ES)</div>`, 
-        run: async(id,i,d)=>{ 
-            // CITIES está definido en el ámbito global del HTML, accesible aquí en tiempo de ejecución
-            const t=d.querySelector('[df-t]').value; const c=CITIES[Math.floor(Math.random()*CITIES.length)];
-            const o=0.02; 
-            const [k,v] = t.includes('=') ? t.split('=') : [t, null];
-            const q=`[out:json];(way["${k}"${v?`="${v}"`:''}](${c.c[0]-o},${c.c[1]-o},${c.c[0]+o},${c.c[1]+o}););out geom;`;
-            log(`Descargando ${t} de ${c.n}...`);
-            const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:q}); return osmtogeojson(await r.json());
+reader_osm: { 
+        cat: '1. Inputs', label: 'OSM Reader', icon: 'fa-globe', color: '#e67e22', in: 0, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Lugar / Zona</span>
+                <input type="text" df-place class="node-control" placeholder="Ej: Humanes de Madrid" value="Madrid">
+            </div>
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Extensión (Metros lado)</span>
+                <input type="number" df-size class="node-control" value="500" min="50" max="2200">
+                <div style="font-size:0.6em;color:#666;font-style:italic">Máximo permitido: 2200m</div>
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Capa a extraer</span>
+                <select class="node-control" df-t>
+                    <option value="building">Edificios</option>
+                    <option value="highway">Carreteras</option>
+                    <option value="leisure=park">Parques</option>
+                    <option value="amenity">Servicios</option>
+                    <option value="waterway">Agua</option>
+                    <option value="landuse">Usos suelo</option>
+                </select>
+            </div>`,
+        run: async (id, i, d) => {
+            const place = d.querySelector('[df-place]').value;
+            let size = parseFloat(d.querySelector('[df-size]').value);
+            const type = d.querySelector('[df-t]').value;
+
+            if (!place) throw new Error("Introduce un nombre de lugar.");
+            
+            // Límite duro basado en tu offset original de 0.02 grados (~2.2km)
+            if (size > 2200) {
+                size = 2200;
+                if(window.log) window.log("⚠️ Aviso: Extensión ajustada al máximo (2200m).");
+            }
+
+            // 1. Geocodificación (Nominatim) para obtener Lat/Lon del centro
+            if(window.log) window.log(`📍 Localizando: ${place}...`);
+            const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(place)}`;
+            
+            let lat, lon;
+            try {
+                const nomRes = await fetch(nomUrl);
+                const nomData = await nomRes.json();
+                if (!nomData || nomData.length === 0) throw new Error("Lugar no encontrado.");
+                lat = parseFloat(nomData[0].lat);
+                lon = parseFloat(nomData[0].lon);
+            } catch (e) { throw new Error("Error geocodificando: " + e.message); }
+
+            // 2. Calcular Bounding Box (Metros -> Grados)
+            // 1 grado latitud ~= 111,320 metros
+            const metersPerDegLat = 111320;
+            const metersPerDegLon = 111320 * Math.cos(lat * (Math.PI / 180));
+            
+            const latOffset = (size / 2) / metersPerDegLat;
+            const lonOffset = (size / 2) / metersPerDegLon;
+
+            const s = lat - latOffset;
+            const w = lon - lonOffset;
+            const n = lat + latOffset;
+            const e = lon + lonOffset;
+
+            // 3. Consultar Overpass API
+            const [k, v] = type.includes('=') ? type.split('=') : [type, null];
+            // Sintaxis Overpass: (south, west, north, east)
+            const query = `[out:json];(way["${k}"${v ? `="${v}"` : ''}](${s},${w},${n},${e}););out geom;`;
+
+            if(window.log) window.log(`⬇️ Descargando ${type} de OSM...`);
+            
+            try {
+                const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
+                if (!r.ok) throw new Error("Servidor OSM saturado o error.");
+                const data = await r.json();
+                const geojson = osmtogeojson(data);
+                
+                if(geojson.features.length === 0) if(window.log) window.log("⚠️ La consulta no devolvió resultados en esa zona.");
+                
+                return geojson;
+            } catch (err) { throw new Error("Fallo Overpass: " + err.message); }
         } 
     },
     reader_file: { cat:'1. Inputs', label:'File Reader', icon:'fa-folder-open', color:'#e67e22', in:0, out:1, 
