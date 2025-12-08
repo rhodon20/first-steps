@@ -638,6 +638,48 @@ reader_osm: {
             return dissolve ? turf.dissolve(buffered) : buffered;
         }
     },
+    geo_random_fill: { 
+        cat: '2. Geometry', label: 'Random Fill', icon: 'fa-braille', color: '#2980b9', in: 1, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Puntos por Polígono</span>
+                <input type="number" df-n class="node-control" value="50" min="1">
+            </div>
+            <div style="font-size:0.6em;color:#888">
+                Genera puntos aleatorios restringidos al interior de cada geometría.
+            </div>`,
+        run: (id, inputs, dom) => {
+            const count = parseInt(dom.querySelector('[df-n]').value) || 10;
+            const resultPoints = [];
+
+            turf.flatten(inputs[0]).features.forEach(f => {
+                const type = turf.getType(f);
+                if (type !== 'Polygon' && type !== 'MultiPolygon') return;
+
+                const bbox = turf.bbox(f);
+                let current = 0;
+                let attempts = 0;
+                const maxAttempts = count * 50; // Evita bucles infinitos en polígonos corruptos
+
+                while (current < count && attempts < maxAttempts) {
+                    // Generamos puntos en el BBox (es muy rápido)
+                    const rnd = turf.randomPoint(1, {bbox: bbox});
+                    const pt = rnd.features[0];
+
+                    // Verificamos si cae "realmente" dentro de la forma exacta
+                    if (turf.booleanPointInPolygon(pt, f)) {
+                        // Heredamos propiedades del padre para no perder el ID/Datos
+                        pt.properties = { ...f.properties, _generated_id: current };
+                        resultPoints.push(pt);
+                        current++;
+                    }
+                    attempts++;
+                }
+            });
+
+            return turf.featureCollection(resultPoints);
+        }
+    },
 
     // --- 3. SPATIAL ANALYSIS ---
     sp_min_area_solver: { 
