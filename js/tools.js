@@ -933,13 +933,15 @@ const TOOL_REGISTRY = {
             };
         }
     },
-    attr_area: { 
+attr_area: { 
         cat: '4. Attributes', label: 'Area Calc', icon: 'fa-ruler-combined', color: '#27ae60', in: 1, out: 1,
-        params: [
-            {id: 'field', type: 'text', label: 'Nombre del Campo', def: '_area'}
-        ],
-        run: (id, inputs, vals) => {
-            const fieldName = vals.field || '_area';
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Nombre del Campo</span>
+                <input type="text" df-field class="node-control" value="_area" placeholder="_area">
+            </div>`,
+        run: (id, inputs, dom) => {
+            const fieldName = dom.querySelector('[df-field]').value || '_area';
             
             inputs[0].features.forEach(f => {
                 // Calcula área en metros cuadrados
@@ -953,15 +955,16 @@ const TOOL_REGISTRY = {
 
     attr_length: { 
         cat: '4. Attributes', label: 'Length Calc', icon: 'fa-ruler-horizontal', color: '#27ae60', in: 1, out: 1,
-        params: [
-            {id: 'field', type: 'text', label: 'Nombre del Campo', def: '_length'}
-        ],
-        run: (id, inputs, vals) => {
-            const fieldName = vals.field || '_length';
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Nombre del Campo</span>
+                <input type="text" df-field class="node-control" value="_length" placeholder="_length">
+            </div>`,
+        run: (id, inputs, dom) => {
+            const fieldName = dom.querySelector('[df-field]').value || '_length';
             
             inputs[0].features.forEach(f => {
-                // Calcula longitud en kilómetros (por defecto en Turf)
-                // Si es polígono, calcula el perímetro
+                // Calcula longitud en kilómetros
                 const length = turf.length(f, {units: 'kilometers'});
                 f.properties[fieldName] = parseFloat(length.toFixed(4));
             });
