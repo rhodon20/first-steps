@@ -100,6 +100,37 @@ reader_osm: {
     // --- 2. GEOMETRY (MANIPULATION) ---
     geo_centroid: { cat:'2. Geometry', label:'CenterPoint', icon:'fa-dot-circle', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Centroide</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centroid(f,{properties:f.properties}))) },
     util_filter_geo: { cat:'5. Utils', label:'Geometry Filter', icon:'fa-shapes', color:'#7f8c8d', in:1, out:3, tpl:()=>`<div style="font-size:0.6em">1:Poly 2:Line 3:Pt</div>`, run: (id,i)=>{const p=[],l=[],pt=[]; i[0].features.forEach(f=>{const t=turf.getType(f).toLowerCase(); if(t.includes('poly'))p.push(f);else if(t.includes('line'))l.push(f);else pt.push(f)}); return {output_1:turf.featureCollection(p),output_2:turf.featureCollection(l),output_3:turf.featureCollection(pt)}} },
+    geo_chunk: { 
+        cat: '2. Geometry', label: 'Line Chopper', icon: 'fa-cut', color: '#2980b9', in: 1, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Longitud de Segmento</span>
+                <div style="display:flex;gap:5px">
+                    <input type="number" df-len value="100" class="node-control">
+                    <select df-unit class="node-control" style="width:80px">
+                        <option value="meters">m</option>
+                        <option value="kilometers">km</option>
+                    </select>
+                </div>
+            </div>`,
+        run: (id, inputs, dom) => {
+            const len = parseFloat(dom.querySelector('[df-len]').value);
+            const unit = dom.querySelector('[df-unit]').value;
+            const res = [];
+            
+            turf.flatten(inputs[0]).features.forEach(f => {
+                if (turf.getType(f) === 'LineString') {
+                    const chunks = turf.lineChunk(f, len, {units: unit});
+                    // Heredar propiedades del padre
+                    chunks.features.forEach(c => c.properties = {...f.properties});
+                    res.push(...chunks.features);
+                } else {
+                    res.push(f); // Pasar geometría no lineal tal cual
+                }
+            });
+            return turf.featureCollection(res);
+        }
+    },
     geo_dissolve: { 
         cat: '2. Geometry', label: 'Dissolver', icon: 'fa-object-group', color: '#2980b9', in: 1, out: 1,
         tpl: () => `
@@ -708,7 +739,42 @@ reader_osm: {
             return source;
         }
     },
-attr_renamer: { 
+    attr_stats: { 
+        cat: '4. Attributes', label: 'Stats Calc', icon: 'fa-calculator', color: '#27ae60', in: 1, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Campo Numérico</span>
+                <input type="text" df-field class="node-control">
+            </div>
+            <div style="font-size:0.6em;color:#666">
+                Calcula Sum, Min, Max, Avg. <br>Resultado en properties._stats
+            </div>`,
+        run: (id, inputs, dom) => {
+            const field = dom.querySelector('[df-field]').value;
+            const values = inputs[0].features
+                .map(f => f.properties[field])
+                .filter(v => typeof v === 'number' && !isNaN(v));
+
+            if (values.length === 0) throw new Error("Campo no numérico o vacío");
+
+            const sum = values.reduce((a, b) => a + b, 0);
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const avg = sum / values.length;
+
+            const stats = { sum, min, max, avg, count: values.length };
+
+            // Inyectamos el resultado en TODOS los features para que esté disponible aguas abajo
+            inputs[0].features.forEach(f => {
+                f.properties['_stats_' + field] = stats;
+            });
+
+            if(window.log) window.log(`📊 Stats [${field}]: Sum=${sum.toFixed(2)} Avg=${avg.toFixed(2)}`);
+            
+            return inputs[0];
+        }
+    },
+    attr_renamer: { 
         cat: '4. Attributes', label: 'Renamer', icon: 'fa-tag', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
