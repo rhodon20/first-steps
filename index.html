@@ -1,0 +1,480 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JETL v2025.12.08 - Extended Modular</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/shpjs@latest/dist/shp.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.js"></script>
+    <script src="https://unpkg.com/osmtogeojson@3.0.0-beta.5/osmtogeojson.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <script src="https://unpkg.com/wellknown@0.5.0/wellknown.js"></script>
+    <script src="https://unpkg.com/@ngageoint/geopackage/dist/geopackage.min.js"></script>
+    <script src="https://unpkg.com/parquetjs-lite/dist/parquet.min.js"></script>
+    <style>
+        /* --- CORE VARS --- */
+        :root { --bg: #121212; --panel: #1e1e1e; --node: #252526; --text: #e0e0e0; --accent: #3498db; --border: #333; --success: #27ae60; --warning: #d35400; --danger: #c0392b; }
+        * { box-sizing: border-box; user-select: none; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+        
+        /* HEADER */
+        #header { height: 45px; background: #202020; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 10px; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .brand { font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; letter-spacing: 0.5px; }
+        .brand span { font-weight: 300; opacity: 0.6; font-size: 0.8em; }
+        .status-dot { width: 8px; height: 8px; background: #7f8c8d; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.5); transition: background 0.3s; }
+        
+        .toolbar { display: flex; gap: 6px; }
+        .btn { background: #333; color: #ddd; border: 1px solid #444; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; font-size: 0.85rem; }
+        .btn:hover { background: #444; border-color: #555; color: #fff; }
+        .btn:active { transform: translateY(1px); }
+        .btn-run { background: #1e7e34; border-color: #19692c; color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .btn-run:hover { background: #218838; }
+
+        /* LAYOUT */
+        #layout { flex: 1; display: flex; overflow: hidden; position: relative; }
+        
+        #sidebar { width: 260px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 50; flex-shrink: 0; transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
+        #sidebar-search { padding: 10px; border-bottom: 1px solid var(--border); background: #252526; }
+        #sidebar-search input { width: 100%; background: #111; border: 1px solid #444; color: white; padding: 6px 10px; border-radius: 4px; font-size: 0.85rem; outline: none; }
+        #sidebar-search input:focus { border-color: var(--accent); }
+        #sidebar-content { flex: 1; overflow-y: auto; padding-bottom: 40px; }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        #workspace { flex: 1; position: relative; overflow: hidden; background: #181818; }
+        #drawflow { width: 100%; height: 100%; background-image: radial-gradient(#333 1px, transparent 1px); background-size: 25px 25px; outline: none; }
+
+        /* --- NODES --- */
+        .drawflow .drawflow-node { 
+            width: 240px; border-radius: 6px; border: 1px solid #444; background: var(--node); 
+            z-index: 10; padding: 0; display: flex; flex-direction: column; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: box-shadow 0.2s, border-color 0.2s;
+        }
+        .drawflow .drawflow-node:hover { border-color: #666; }
+        .drawflow .drawflow-node.selected { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3) !important; }
+        
+        .node-head { 
+            padding: 8px 10px; background: linear-gradient(to bottom, rgba(255,255,255,0.05), rgba(0,0,0,0.1)); 
+            border-bottom: 1px solid #333; font-weight: 600; font-size: 0.8rem; 
+            display: flex; justify-content: space-between; align-items: center; color: #f0f0f0; 
+            cursor: grab; border-top-left-radius: 5px; border-top-right-radius: 5px;
+        }
+        .node-head:active { cursor: grabbing; }
+        .node-body { padding: 10px; font-size: 0.75rem; color: #bbb; background: var(--node); border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; }
+        
+        /* Node Actions (Badge & Buttons) */
+        .node-actions { display: flex; align-items: center; gap: 6px; }
+        
+        .count-badge { padding: 2px 6px; border-radius: 10px; font-size: 0.65em; display: none; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .badge-green { background: var(--success); color: #fff; }
+        .badge-orange { background: var(--warning); color: #fff; }
+
+        .node-btn { 
+            color: #777; cursor: pointer; font-size: 0.9em; transition: all 0.2s; padding: 2px; border-radius: 3px; 
+            pointer-events: auto; opacity: 0.7;
+        }
+        .node-btn:hover { color: #fff; opacity: 1; transform: scale(1.1); }
+        .node-btn.active { color: var(--accent); opacity: 1; text-shadow: 0 0 5px rgba(52,152,219,0.5); }
+
+        .node-control { width: 100%; background: #111; border: 1px solid #444; color: #eee; padding: 5px 8px; border-radius: 3px; margin-bottom: 6px; box-sizing: border-box; font-family: 'Consolas', monospace; font-size: 0.85em; }
+        .node-control:focus { border-color: var(--accent); outline: none; }
+        select.node-control { cursor: pointer; }
+
+        /* Connections */
+        .drawflow .drawflow-node .inputs, .drawflow .drawflow-node .outputs {
+            position: absolute; top: 50% !important; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 14px; width: 0;
+        }
+        .drawflow .drawflow-node .inputs { left: -14px; }
+        .drawflow .drawflow-node .outputs { right: -14px; }
+
+        .drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
+            width: 12px; height: 12px; border-radius: 50%; border: 2px solid #000;
+            background: #777; cursor: crosshair; transition: transform 0.1s;
+        }
+        .drawflow .drawflow-node .input:hover, .drawflow .drawflow-node .output:hover { transform: scale(1.3); background: #fff; }
+        .drawflow .drawflow-node .output { background: #555; }
+        .drawflow .connection .main-path { stroke-width: 3px; stroke: #666; }
+        .drawflow .connection.selected .main-path { stroke: var(--accent); }
+
+        /* Junction */
+        .drawflow .drawflow-node.junction { width: 16px; height: 16px; border-radius: 50%; background: #aaa; border: 2px solid #fff; min-height: unset; overflow: visible; padding: 0; box-shadow: none; }
+        .drawflow .drawflow-node.junction .inputs, .drawflow .drawflow-node.junction .outputs { top: 50% !important; left: 50% !important; transform: translate(-50%, -50%); }
+        .drawflow .drawflow-node.junction .node-head, .drawflow .drawflow-node.junction .node-body { display: none; }
+
+        /* Sidebar Items & Collapsible */
+        .cat-group { border-bottom: 1px solid #333; }
+        .cat-title { 
+            padding: 12px 10px 8px 10px; font-size: 0.75rem; font-weight: 700; color: #888; 
+            text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+            background: #222; transition: color 0.2s;
+        }
+        .cat-title:hover { color: #fff; background: #2a2a2a; }
+        .cat-title i { font-size: 0.8em; transition: transform 0.3s; }
+        .cat-title.active i { transform: rotate(180deg); }
+        
+        .cat-items { display: none; padding-bottom: 8px; animation: slideDown 0.2s ease-out; }
+        .cat-items.open { display: block; }
+        @keyframes slideDown { from {opacity:0; transform:translateY(-5px);} to {opacity:1; transform:translateY(0);} }
+
+        .node-item { 
+            padding: 8px 12px; margin: 2px 8px; background: #2a2a2a; border-radius: 4px; cursor: pointer; 
+            font-size: 0.8rem; display: flex; align-items: center; gap: 10px; border: 1px solid transparent; 
+            transition: all 0.2s; color: #ccc;
+        }
+        .node-item:hover { background: #333; border-color: #555; transform: translateX(3px); color: #fff; }
+        .node-item i { width: 18px; text-align: center; }
+
+        /* Quick Search Modal */
+        #quick-search {
+            position: absolute; display: none; background: #252526; width: 250px;
+            border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 5px 20px rgba(0,0,0,0.6);
+            z-index: 2000; overflow: hidden; font-family: 'Segoe UI', sans-serif;
+        }
+        #qs-input { 
+            width: 100%; background: #1a1a1a; border: none; padding: 10px; color: white; 
+            font-size: 0.9rem; outline: none; border-bottom: 1px solid #333; 
+        }
+        #qs-results { max-height: 200px; overflow-y: auto; }
+        .qs-item { 
+            padding: 8px 12px; cursor: pointer; color: #ccc; font-size: 0.85rem; display: flex; align-items: center; gap: 10px; 
+        }
+        .qs-item:hover, .qs-item.selected { background: var(--accent); color: white; }
+        .qs-item i { width: 20px; text-align: center; }
+
+        /* Bottom Panel */
+        #bottom-panel { height: 40vh; background: #1a1a1a; border-top: 1px solid var(--border); display: flex; flex-direction: column; z-index: 60; transition: height 0.3s ease; position: relative; }
+        #panel-tabs { height: 36px; background: #252526; display: flex; padding: 0 5px; border-bottom: 1px solid #333; justify-content: space-between; align-items: center; }
+        .tab-btn { background: transparent; border: none; color: #888; padding: 0 16px; height: 100%; cursor: pointer; font-size: 0.8rem; font-weight: 600; border-bottom: 2px solid transparent; transition: color 0.2s; }
+        .tab-btn:hover { color: #ddd; }
+        .tab-btn.active { color: white; border-bottom-color: var(--accent); background: rgba(255,255,255,0.03); }
+        
+        #panel-content { flex: 1; display: flex; overflow: hidden; position: relative; }
+        #logs { width: 100%; background: #111; overflow-y: auto; padding: 10px; font-family: 'Consolas', monospace; font-size: 0.8rem; color: #ddd; display:none; white-space: pre-wrap; }
+        #map { flex: 1; background: #111; z-index: 1; width: 100%; }
+        #table-container { flex: 1; background: #181818; overflow: auto; display: none; z-index: 2; width: 100%; }
+
+        table.attr-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; color: #ccc; }
+        table.attr-table th { background: #2d2d2d; position: sticky; top: 0; padding: 8px; text-align: left; border-bottom: 1px solid #555; color: #fff; z-index: 10; font-weight: 600; box-shadow: 0 2px 2px rgba(0,0,0,0.1); }
+        table.attr-table td { padding: 6px 8px; border-bottom: 1px solid #333; white-space: nowrap; max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+        table.attr-table tr:hover td { background: #333; color: #fff; }
+        table.attr-table tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            #sidebar { position: absolute; height: 100%; transform: translateX(-105%); box-shadow: 5px 0 20px rgba(0,0,0,0.5); width: 80%; max-width: 300px; }
+            #sidebar.open { transform: translateX(0); }
+            .brand span { display: none; }
+            #header { padding: 0 5px; }
+            .node-control { font-size: 16px; } 
+        }
+        
+        #toast { 
+            position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); 
+            background: #252526; color: white; padding: 10px 20px; border-radius: 30px; 
+            font-size: 0.9rem; opacity: 0; transition: all 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); 
+            z-index: 2000; border: 1px solid var(--border); box-shadow: 0 5px 15px rgba(0,0,0,0.5); pointer-events: none; 
+            display: flex; align-items: center; gap: 10px;
+        }
+        #toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+        
+        /* Loading Overlay */
+        #loader { position: absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:9999; display:none; justify-content:center; align-items:center; flex-direction:column; color:white; backdrop-filter: blur(2px); }
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loader"><div class="spinner"></div><div id="loader-msg">Procesando...</div></div>
+    <div id="toast"><i class="fas fa-info-circle"></i><span id="toast-msg">Notificación</span></div>
+
+    <div id="quick-search">
+        <input type="text" id="qs-input" placeholder="Escribe para buscar..." autocomplete="off">
+        <div id="qs-results"></div>
+    </div>
+
+    <div id="header">
+        <button class="btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+        <div class="brand" style="margin-left:10px"><div class="status-dot" id="sys-status" title="Sistema Listo"></div>&nbsp;JETL Sunrise <span>v2025.12.08 Ex</span></div>
+        <div class="toolbar">
+            <button class="btn" onclick="clearCanvas()" title="Borrar todo"><i class="fas fa-trash-alt"></i></button>
+            <button class="btn btn-run" onclick="runEngine()">RUN <i class="fas fa-play" style="margin-left:6px; font-size:0.8em"></i></button>
+        </div>
+    </div>
+
+    <div id="layout">
+        <div id="sidebar">
+            <div id="sidebar-search">
+                <input type="text" placeholder="Buscar transformador..." onkeyup="filterTools(this.value)">
+            </div>
+            <div id="sidebar-content"></div>
+        </div>
+        <div id="sidebar-overlay" onclick="toggleSidebar()" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:40;"></div>
+        
+        <div id="workspace">
+            <div id="drawflow" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+        </div>
+    </div>
+
+    <div id="bottom-panel">
+        <div id="panel-tabs">
+            <div style="display:flex; height:100%">
+                <button class="tab-btn active" onclick="switchTab('map', event)"><i class="fas fa-map-marked-alt"></i> Mapa</button>
+                <button class="tab-btn" onclick="switchTab('table', event)"><i class="fas fa-table"></i> Datos</button>
+                <button class="tab-btn" onclick="switchTab('logs', event)"><i class="fas fa-terminal"></i> Consola</button>
+            </div>
+            <button class="tab-btn" style="padding:0 15px" onclick="togglePanelHeight()"><i class="fas fa-compress-alt"></i></button>
+        </div>
+        <div id="panel-content">
+            <div id="logs" style="display:block">Sistema listo.</div>
+            
+            <div id="table-container">
+                <div style="padding:40px; color:#666; text-align:center; font-style:italic">
+                    <i class="fas fa-table" style="font-size:2em; margin-bottom:10px"></i><br>
+                    Ejecuta el flujo y selecciona un nodo para ver sus datos aquí.
+                </div>
+            </div>
+
+            <div id="map"></div>
+        </div>
+    </div>
+    <script src="js\core.js"></script>
+    <script src="js\tools.js"></script>
+    <script src="js\engine.js"></script>
+    <script src="js\processNode.js"></script>
+    <script>
+
+        // =============================================
+        // VISUALIZACIÓN
+        // =============================================
+        function showOnMap(id) {
+            let meta = executionData[id];
+            if(!meta || !meta.data) { showToast("Nodo sin datos procesados", "error"); return; }
+            let data = meta.data;
+            
+            if(!data.type) data = data.output_1 || data.output_2 || data.output_3;
+            if(!data || !data.features || data.features.length === 0) { showToast("Geometría vacía", "error"); return; }
+
+            if(mapLayers[id]) { map.removeLayer(mapLayers[id]); layerControl.removeLayer(mapLayers[id]); }
+
+            const nodeName = editor.getNodeFromId(id).name;
+            const tool = TOOL_REGISTRY[nodeName];
+            const layerName = `<span style="color:${tool.color}">■</span> ${tool.label} (#${id})`;
+            
+            const layer = L.geoJSON(data, {
+                style: { color: tool.color, weight: 2, opacity: 0.8, fillOpacity: 0.2 },
+                pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 6, color: '#fff', weight:1, fillColor: tool.color, fillOpacity: 0.9 })
+            }).addTo(map);
+
+            layerControl.addOverlay(layer, layerName);
+            mapLayers[id] = layer;
+            
+            try { map.fitBounds(layer.getBounds(), {padding:[50,50], maxZoom: 16}); } catch(e){}
+            switchTab('map');
+        }
+
+        function buildTable(data) {
+            const container = document.getElementById('table-container');
+            container.innerHTML = '';
+            if(!data.type) data = data.output_1 || data.output_2 || data.output_3;
+            if(!data || !data.features || data.features.length === 0) { container.innerHTML = '<div style="padding:20px;text-align:center">Sin datos.</div>'; return; }
+
+            const props = data.features[0].properties || {};
+            const headers = Object.keys(props);
+            
+            let html = '<table class="attr-table"><thead><tr><th>#</th>';
+            headers.forEach(h => html += `<th>${h}</th>`);
+            html += '</tr></thead><tbody>';
+            
+            const limit = Math.min(data.features.length, 200);
+            for(let i=0; i<limit; i++) {
+                html += `<tr><td>${i+1}</td>`;
+                headers.forEach(h => {
+                    let val = data.features[i].properties[h];
+                    if(typeof val === 'object') val = '[Obj]';
+                    html += `<td title="${val}">${val!==undefined?val:''}</td>`
+                });
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            if(data.features.length > 200) html += `<div style="padding:10px;text-align:center;font-size:0.8rem;color:#888;background:#222">... Visualizando 200 de ${data.features.length} registros. Descarga el CSV para ver todo.</div>`;
+            container.innerHTML = html;
+        }
+
+        // Función para actualizar los badges según el Timestamp
+        function updateBadges() {
+            Object.keys(executionData).forEach(id => {
+                const meta = executionData[id];
+                const badge = document.getElementById('b-'+id);
+                if(!badge) return;
+
+                let count = 0;
+                const d = meta.data;
+                if(d.features) count = d.features.length;
+                else if(d.output_1) count = d.output_1.features.length + (d.output_2?.features.length||0);
+                
+                badge.innerText = count;
+                badge.style.display = 'inline-block';
+                
+                // Lógica Semáforo
+                badge.className = 'count-badge'; // reset
+                if (meta._runId === currentRunTimestamp) {
+                    badge.classList.add('badge-green'); // Calculado AHORA
+                } else {
+                    badge.classList.add('badge-orange'); // Calculado ANTES (Stale)
+                }
+            });
+        }
+
+        // =============================================
+        // HELPERS GENÉRICOS
+        // =============================================
+        function toggleSidebar() { const s = document.getElementById('sidebar'); s.classList.toggle('open'); document.getElementById('sidebar-overlay').style.display = s.classList.contains('open')?'block':'none'; }
+        function togglePanelHeight() { 
+            const p = document.getElementById('bottom-panel'); 
+            const isMin = p.offsetHeight < 100;
+            p.style.height = isMin ? '45vh' : '36px'; 
+            setTimeout(()=>map.invalidateSize(), 350); 
+        }
+        function switchTab(t) {
+            const evt = arguments[1] || window.event;
+            document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+            try{ if(evt && evt.currentTarget) evt.currentTarget.classList.add('active'); else if(evt && evt.target) evt.target.closest('button').classList.add('active'); }catch(e){}
+            ['map','logs','table-container'].forEach(x=>{ const el=document.getElementById(x); if(el) el.style.display='none'; });
+            const showId = (t==='table') ? 'table-container' : t;
+            const toShow = document.getElementById(showId);
+            if(toShow) toShow.style.display = 'block';
+            if(document.getElementById('bottom-panel').offsetHeight < 100) togglePanelHeight();
+            if(t==='map') setTimeout(()=>map.invalidateSize(), 300);
+        }
+
+        function log(m, t) { 
+            const l = document.getElementById('logs'); 
+            const ts = new Date().toLocaleTimeString();
+            l.innerHTML += `<div style="color:${t==='err'?'#e74c3c':(t==='success'?'#2ecc71':'#bbb')};margin-bottom:4px"><span style="opacity:0.5">[${ts}]</span> ${m}</div>`; 
+            l.scrollTop = l.scrollHeight; 
+        }
+        function showToast(m, type) { 
+            const t=document.getElementById('toast'); 
+            document.getElementById('toast-msg').innerText=m; 
+            t.className = 'visible'; 
+            t.style.borderLeft = `4px solid ${type==='error'?'#e74c3c':'#2ecc71'}`;
+            setTimeout(()=>t.className='', 3000); 
+        }
+        
+        async function loadFile(input, id) {
+            const file = input.files[0];
+            if (!file) return;
+            const lbl = document.getElementById('lbl-' + id);
+            lbl.innerText = "Leyendo...";
+            
+            try {
+                let geojson = null;
+                const buffer = await file.arrayBuffer();
+                
+                if (file.name.match(/\.zip$/i)) {
+                    const result = await shp(buffer);
+                    geojson = Array.isArray(result) ? turf.featureCollection(result.flatMap(r=>r.features)) : result;
+                } else if (file.name.match(/\.json$|\.geojson$/i)) {
+                    const text = new TextDecoder("utf-8").decode(buffer);
+                    geojson = JSON.parse(text);
+                } else if (file.name.match(/\.kml$/i)) {
+                    const text = new TextDecoder("utf-8").decode(buffer);
+                    geojson = toGeoJSON.kml(new DOMParser().parseFromString(text,'text/xml'));
+                } else if (file.name.match(/\.gpkg$/i)) {
+                    try {
+                        let geoFeatures = [];
+                        if(window.GeoPackageAPI && window.GeoPackageAPI.open) {
+                            const gp = await window.GeoPackageAPI.open(buffer);
+                            const tables = gp.getFeatureTables ? gp.getFeatureTables() : (gp.getTables ? gp.getTables() : []);
+                            for(const t of tables){ try{ if(gp.getGeoJSONFeatures) { const gj = gp.getGeoJSONFeatures(t); if(gj && gj.features) geoFeatures.push(...gj.features); } }catch(e){} }
+                        } else if(window.GeoPackage && window.GeoPackage.open) {
+                            const gp = await window.GeoPackage.open(buffer);
+                            const tables = gp.getFeatureTables ? gp.getFeatureTables() : (gp.getTables ? gp.getTables() : []);
+                            for(const t of tables){ try{ if(gp.getGeoJSONFeatures) { const gj = gp.getGeoJSONFeatures(t); if(gj && gj.features) geoFeatures.push(...gj.features); } }catch(e){} }
+                        }
+                        if(geoFeatures.length === 0) throw new Error('No features found in GPKG');
+                        geojson = turf.featureCollection(geoFeatures);
+                    } catch(e){ throw new Error('GPKG: ' + e.message); }
+                } else if (file.name.match(/\.parquet$/i)) {
+                    try {
+                        if(!window.parquet || !window.parquet.ParquetReader) throw new Error('parquetjs-lite missing');
+                        const reader = await parquet.ParquetReader.openBuffer(buffer);
+                        const cursor = reader.getCursor();
+                        const features = [];
+                        let record = null;
+                        while((record = await cursor.next())){
+                            if(record.geometry){ try{ const g = typeof record.geometry === 'string' ? wellknown(record.geometry) : record.geometry; features.push(turf.feature(g, record)); continue; }catch(e){} }
+                            if((record.lon!==undefined && record.lat!==undefined) || (record.longitude!==undefined && record.latitude!==undefined)){
+                                const lon = record.lon!==undefined?record.lon:record.longitude; const lat = record.lat!==undefined?record.lat:record.latitude;
+                                features.push(turf.point([Number(lon), Number(lat)], record));
+                            }
+                        }
+                        if(features.length===0) throw new Error('No geo columns in parquet');
+                        geojson = turf.featureCollection(features);
+                    } catch(e){ throw new Error('Parquet: ' + e.message); }
+                } else {
+                    throw new Error("Formato no soportado");
+                }
+
+                geojson = ensureFC(geojson);
+                document.getElementById('d-' + id).value = JSON.stringify(geojson);
+                lbl.innerText = `${file.name} (${geojson.features.length} feats)`;
+                lbl.style.color = "#2ecc71";
+            } catch (e) {
+                console.error(e);
+                lbl.innerText = "Error lectura";
+                lbl.style.color = "#e74c3c";
+                alert("Error: " + e.message);
+            }
+        }
+
+        function download(c,n,t){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:t})); a.download=n; a.click(); }
+        function toCSV(g){ 
+            if(!g || !g.features || g.features.length===0) return "";
+            const props = new Set();
+            g.features.forEach(f=>Object.keys(f.properties||{}).forEach(k=>props.add(k)));
+            const h=Array.from(props);
+            const escape = v => {
+                if(v === null || v === undefined) return '';
+                if(typeof v === 'object') v = JSON.stringify(v);
+                v = String(v);
+                if(v.includes('"')) v = v.replace(/"/g, '""');
+                if(v.includes(',') || v.includes('\n') || v.includes('"')) return '"'+v+'"';
+                return v;
+            };
+            const rows = g.features.map(f => h.map(k => escape(f.properties?f.properties[k]:'')).join(','));
+            return h.join(',') + '\n' + rows.join('\n');
+        }
+        function toKML(g){ return '<?xml version="1.0" encoding="UTF-8"?><kml><Document>'+g.features.map(f=>`<Placemark><name>${f.properties.id||f.properties.name||''}</name><description>${JSON.stringify(f.properties)}</description>${tokmlgeo(f.geometry)}</Placemark>`).join('')+'</Document></kml>'; }
+        function tokmlgeo(g){ 
+            if(!g) return '';
+            const c = g.coordinates;
+            if(g.type==='Point') return `<Point><coordinates>${c.join(',')}</coordinates></Point>`;
+            if(g.type==='LineString') return `<LineString><coordinates>${c.map(p=>p.join(',')).join(' ')}</coordinates></LineString>`;
+            if(g.type==='Polygon') return `<Polygon><outerBoundaryIs><LinearRing><coordinates>${c[0].map(p=>p.join(',')).join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+            return '';
+        }
+        function clearCanvas(){ 
+            if(!confirm("¿Borrar todo?")) return;
+            editor.clear(); 
+            SafeStorage.clear('jetl_flow_optimized'); 
+            map.eachLayer(l => { if(!!l.toGeoJSON) { map.removeLayer(l); layerControl.removeLayer(l); } });
+            mapLayers = {}; executionData = {};
+            log("Canvas limpio.");
+        }
+    </script>
+</body>
+</html>
