@@ -639,6 +639,95 @@ const TOOL_REGISTRY = {
             return source;
         }
     },
+    attr_renamer: { 
+        cat: '4. Attributes', label: 'Renamer', icon: 'fa-tag', color: '#27ae60', in: 1, out: 1,
+        params: [
+            {id: 'map', type: 'text', label: 'Mapeo (Old:New, A:B)', placeholder: 'viejo:nuevo, id:uid'}
+        ],
+        run: (id, inputs, vals) => {
+            const mapping = vals.map.split(',').map(p => p.split(':').map(s => s.trim()));
+            
+            inputs[0].features.forEach(f => {
+                mapping.forEach(([oldName, newName]) => {
+                    if (f.properties[oldName] !== undefined && newName) {
+                        f.properties[newName] = f.properties[oldName];
+                        delete f.properties[oldName];
+                    }
+                });
+            });
+            return inputs[0];
+        }
+    },
+
+    attr_keeper: { 
+        cat: '4. Attributes', label: 'Keeper', icon: 'fa-check-square', color: '#27ae60', in: 1, out: 1,
+        params: [
+            {id: 'keep', type: 'text', label: 'Campos a mantener', placeholder: 'id, name, type'}
+        ],
+        run: (id, inputs, vals) => {
+            const toKeep = new Set(vals.keep.split(',').map(s => s.trim()));
+            
+            inputs[0].features.forEach(f => {
+                const newProps = {};
+                Object.keys(f.properties).forEach(k => {
+                    if (toKeep.has(k)) newProps[k] = f.properties[k];
+                });
+                f.properties = newProps;
+            });
+            return inputs[0];
+        }
+    },
+
+    attr_creator: { 
+        cat: '4. Attributes', label: 'Attr Creator', icon: 'fa-plus-square', color: '#27ae60', in: 1, out: 1,
+        params: [
+            {id: 'name', type: 'text', label: 'Nuevo Campo', def: 'new_field'},
+            {id: 'val', type: 'text', label: 'Valor o Fórmula (=)', def: 'Constante'}
+        ],
+        run: (id, inputs, vals) => {
+            const field = vals.name;
+            const exprRaw = vals.val;
+            const isFormula = exprRaw.startsWith('=');
+            
+            // Si es fórmula, preparamos la función una sola vez para rendimiento
+            let formulaFn = null;
+            if (isFormula) {
+                try {
+                    // Creamos una función que recibe 'f' (feature)
+                    // Ej: =f.properties.height * 2  --> return f.properties.height * 2
+                    formulaFn = new Function('f', 'return ' + exprRaw.substring(1));
+                } catch(e) { console.warn("Error en fórmula Creator", e); }
+            }
+
+            inputs[0].features.forEach(f => {
+                if (isFormula && formulaFn) {
+                    try {
+                        f.properties[field] = formulaFn(f);
+                    } catch(e) { f.properties[field] = null; }
+                } else {
+                    f.properties[field] = exprRaw;
+                }
+            });
+            return inputs[0];
+        }
+    },
+
+    attr_counter: { 
+        cat: '4. Attributes', label: 'Counter', icon: 'fa-sort-numeric-down', color: '#27ae60', in: 1, out: 1,
+        params: [
+            {id: 'field', type: 'text', label: 'Nombre Campo', def: '_id'},
+            {id: 'start', type: 'number', label: 'Inicio', def: 1}
+        ],
+        run: (id, inputs, vals) => {
+            let count = parseInt(vals.start);
+            const fieldName = vals.field;
+            
+            inputs[0].features.forEach(f => {
+                f.properties[fieldName] = count++;
+            });
+            return inputs[0];
+        }
+    },
     attr_area: { 
         cat: '4. Attributes', label: 'Area Calc', icon: 'fa-ruler-combined', color: '#27ae60', in: 1, out: 1,
         params: [
