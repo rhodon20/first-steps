@@ -93,6 +93,54 @@ reader_osm: {
     reader_http: { cat:'1. Inputs', label:'HTTP JSON', icon:'fa-cloud-download-alt', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-u placeholder="URL (GeoJSON)">`, run: async(id,i,d)=>{const r=await fetch(d.querySelector('[df-u]').value); return await r.json();} },
     reader_wkt: { cat:'1. Inputs', label:'WKT/Text', icon:'fa-font', color:'#e67e22', in:0, out:1, tpl:()=>`<textarea class="node-control" df-w placeholder="POINT(30 10)"></textarea>`, run: async(id,i,d)=>{const t=d.querySelector('[df-w]').value; const w=wellknown(t); return turf.featureCollection([turf.feature(w)])} },
     reader_bbox_gen: { cat:'1. Inputs', label:'BBox Creator', icon:'fa-vector-square', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-b placeholder="minX,minY,maxX,maxY" value="-3.75,40.4,-3.65,40.5">`, run:(id,i,d)=>{const b=d.querySelector('[df-b]').value.split(',').map(Number); return turf.featureCollection([turf.bboxPolygon(b)])} },
+    reader_geotiff: { 
+        cat: '1. Inputs', label: 'GeoTIFF Reader', icon: 'fa-layer-group', color: '#e67e22', in: 0, out: 1,
+        tpl: (id) => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Archivo .tif / .tiff</span>
+                <input type="file" df-file class="node-control" accept=".tif,.tiff">
+            </div>
+            <div style="font-size:0.6em;color:#666">
+                Lee la extensión (BBox) y metadatos del Raster.
+            </div>`,
+        run: async (id, i, d) => {
+            const fileInput = d.querySelector('[df-file]');
+            if (!fileInput.files || fileInput.files.length === 0) throw new Error("Selecciona un archivo TIFF");
+
+            const file = fileInput.files[0];
+            const arrayBuffer = await file.arrayBuffer();
+            
+            // 1. Leemos el binario con la librería GeoTIFF
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage(); // Obtiene la primera imagen del directorio
+
+            // 2. Extraemos Metadatos básicos
+            const width = image.getWidth();
+            const height = image.getHeight();
+            const samples = image.getSamplesPerPixel(); // Bandas
+            const bbox = image.getBoundingBox(); // [minX, minY, maxX, maxY]
+
+            // 3. ESTRATEGIA HÍBRIDA:
+            // Convertimos la extensión del raster en un Polígono Vectorial (Turf)
+            // Esto permite que el flujo siga funcionando con tus herramientas actuales.
+            const poly = turf.bboxPolygon(bbox);
+
+            // 4. Guardamos los datos "crudos" en las propiedades para uso futuro
+            poly.properties = {
+                source_file: file.name,
+                type: 'raster_bbox',
+                width: width,
+                height: height,
+                bands: samples,
+                crs_hint: 'Check original file', // GeoTIFF.js no reproyecta automáticamente
+                _raster_ref: true // Bandera para futuros nodos híbridos
+            };
+
+            if(window.log) window.log(`📷 Raster cargado: ${width}x${height}px (${samples} bandas)`);
+
+            return turf.featureCollection([poly]);
+        }
+    },
     gen_point: { cat:'1. Inputs', label:'Point Creator', icon:'fa-map-pin', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-c placeholder="Lon,Lat" value="-3.703,40.416">`, run:(id,i,d)=>{const c=d.querySelector('[df-c]').value.split(',').map(Number); return turf.featureCollection([turf.point(c)])} },
     gen_grid: { cat:'1. Inputs', label:'Grid Generator', icon:'fa-th', color:'#e67e22', in:0, out:1, tpl:()=>`<select class="node-control" df-t><option value="hex">Hex</option><option value="sq">Square</option></select><input class="node-control" type="number" df-s value="1" placeholder="Size km">`, run:(id,i,d)=>{const t=d.querySelector('[df-t]').value,s=parseFloat(d.querySelector('[df-s]').value),b=[-3.8,40.3,-3.6,40.5]; return t==='hex'?turf.hexGrid(b,s):turf.squareGrid(b,s)} },
     gen_random: { cat:'1. Inputs', label:'Random Points', icon:'fa-dice', color:'#e67e22', in:0, out:1, tpl:()=>`<input type="number" df-n value="50" class="node-control">`, run:(id,i,d)=>turf.randomPoint(parseInt(d.querySelector('[df-n]').value), {bbox:[-3.8,40.3,-3.6,40.5]}) },
