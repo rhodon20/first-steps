@@ -639,13 +639,17 @@ const TOOL_REGISTRY = {
             return source;
         }
     },
-    attr_renamer: { 
+attr_renamer: { 
         cat: '4. Attributes', label: 'Renamer', icon: 'fa-tag', color: '#27ae60', in: 1, out: 1,
-        params: [
-            {id: 'map', type: 'text', label: 'Mapeo (Old:New, A:B)', placeholder: 'viejo:nuevo, id:uid'}
-        ],
-        run: (id, inputs, vals) => {
-            const mapping = vals.map.split(',').map(p => p.split(':').map(s => s.trim()));
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Mapeo (Viejo:Nuevo)</span>
+                <input type="text" df-map class="node-control" placeholder="old:new, id:uid">
+                <div style="font-size:0.6em;color:#666;font-style:italic">Separar pares por comas</div>
+            </div>`,
+        run: (id, inputs, dom) => {
+            const mapStr = dom.querySelector('[df-map]').value;
+            const mapping = mapStr.split(',').map(p => p.split(':').map(s => s.trim()));
             
             inputs[0].features.forEach(f => {
                 mapping.forEach(([oldName, newName]) => {
@@ -661,11 +665,15 @@ const TOOL_REGISTRY = {
 
     attr_keeper: { 
         cat: '4. Attributes', label: 'Keeper', icon: 'fa-check-square', color: '#27ae60', in: 1, out: 1,
-        params: [
-            {id: 'keep', type: 'text', label: 'Campos a mantener', placeholder: 'id, name, type'}
-        ],
-        run: (id, inputs, vals) => {
-            const toKeep = new Set(vals.keep.split(',').map(s => s.trim()));
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Campos a mantener</span>
+                <input type="text" df-keep class="node-control" placeholder="id, name, type">
+                <div style="font-size:0.6em;color:#666;font-style:italic">El resto será borrado</div>
+            </div>`,
+        run: (id, inputs, dom) => {
+            const keepStr = dom.querySelector('[df-keep]').value;
+            const toKeep = new Set(keepStr.split(',').map(s => s.trim()));
             
             inputs[0].features.forEach(f => {
                 const newProps = {};
@@ -680,21 +688,23 @@ const TOOL_REGISTRY = {
 
     attr_creator: { 
         cat: '4. Attributes', label: 'Attr Creator', icon: 'fa-plus-square', color: '#27ae60', in: 1, out: 1,
-        params: [
-            {id: 'name', type: 'text', label: 'Nuevo Campo', def: 'new_field'},
-            {id: 'val', type: 'text', label: 'Valor o Fórmula (=)', def: 'Constante'}
-        ],
-        run: (id, inputs, vals) => {
-            const field = vals.name;
-            const exprRaw = vals.val;
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Nuevo Campo</span>
+                <input type="text" df-name class="node-control" value="new_field">
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Valor o Fórmula (=)</span>
+                <input type="text" df-val class="node-control" placeholder="Texto o =f.properties.id*2">
+            </div>`,
+        run: (id, inputs, dom) => {
+            const field = dom.querySelector('[df-name]').value;
+            const exprRaw = dom.querySelector('[df-val]').value;
             const isFormula = exprRaw.startsWith('=');
             
-            // Si es fórmula, preparamos la función una sola vez para rendimiento
             let formulaFn = null;
             if (isFormula) {
                 try {
-                    // Creamos una función que recibe 'f' (feature)
-                    // Ej: =f.properties.height * 2  --> return f.properties.height * 2
                     formulaFn = new Function('f', 'return ' + exprRaw.substring(1));
                 } catch(e) { console.warn("Error en fórmula Creator", e); }
             }
@@ -714,13 +724,18 @@ const TOOL_REGISTRY = {
 
     attr_counter: { 
         cat: '4. Attributes', label: 'Counter', icon: 'fa-sort-numeric-down', color: '#27ae60', in: 1, out: 1,
-        params: [
-            {id: 'field', type: 'text', label: 'Nombre Campo', def: '_id'},
-            {id: 'start', type: 'number', label: 'Inicio', def: 1}
-        ],
-        run: (id, inputs, vals) => {
-            let count = parseInt(vals.start);
-            const fieldName = vals.field;
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Nombre Campo ID</span>
+                <input type="text" df-field class="node-control" value="_id">
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Valor Inicial</span>
+                <input type="number" df-start class="node-control" value="1">
+            </div>`,
+        run: (id, inputs, dom) => {
+            const fieldName = dom.querySelector('[df-field]').value;
+            let count = parseInt(dom.querySelector('[df-start]').value) || 1;
             
             inputs[0].features.forEach(f => {
                 f.properties[fieldName] = count++;
