@@ -14,7 +14,7 @@ reader_osm: {
             </div>
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Extensión (Metros lado)</span>
-                <input type="number" df-size class="node-control" value="500" min="50" max="2200">
+                <input type="number" df-size class="node-control" value="2000" min="50" max="2200">
                 <div style="font-size:0.6em;color:#666;font-style:italic">Máximo permitido: 2200m</div>
             </div>
             <div>
@@ -1421,8 +1421,71 @@ attr_area: {
 
             return turf.featureCollection(allFeatures);
         } 
-    },    util_holder: { cat:'5. Utils', label:'Inspector', icon:'fa-eye', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div style="font-size:0.7em; color:#aaa">Passthrough</div>`, run: (id,i)=>i[0] },
+    },    
+    util_holder: { cat:'5. Utils', label:'Inspector', icon:'fa-eye', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div style="font-size:0.7em; color:#aaa">Passthrough</div>`, run: (id,i)=>i[0] },
+    util_sampler: { 
+        cat: '5. Utils', label: 'Random Sampler', icon: 'fa-dice', color: '#7f8c8d', in: 1, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Estrategia de Muestreo</span>
+                <select df-mode class="node-control">
+                    <option value="random">Aleatorio (N Total)</option>
+                    <option value="interval">Intervalo (Cada N)</option>
+                    <option value="first">Primeros N (Head)</option>
+                    <option value="last">Últimos N (Tail)</option>
+                </select>
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Valor (N)</span>
+                <input type="number" df-n class="node-control" value="10" min="1">
+            </div>`,
+        run: (id, inputs, dom) => {
+            const mode = dom.querySelector('[df-mode]').value;
+            const n = parseInt(dom.querySelector('[df-n]').value) || 1;
+            
+            // Creamos una copia superficial del array para no alterar el orden del input original
+            // en la caché del nodo anterior si usamos métodos destructivos (como sort)
+            const features = [...inputs[0].features];
+            const total = features.length;
+            let result = [];
 
+            if (n <= 0) return turf.featureCollection([]);
+
+            switch(mode) {
+                case 'first':
+                    result = features.slice(0, n);
+                    break;
+                
+                case 'last':
+                    // Slice negativo coge desde el final
+                    result = features.slice(-n); 
+                    break;
+                
+                case 'interval':
+                    // Coge el índice 0, N, 2N, 3N...
+                    // Nota: Si quieres "uno cada N" empezando por el 1º, usas modulo 0.
+                    result = features.filter((f, idx) => idx % n === 0);
+                    break;
+                
+                case 'random':
+                    if (n >= total) {
+                        result = features;
+                    } else {
+                        // Algoritmo Fisher-Yates Shuffle (Barajado eficiente)
+                        // Solo necesitamos barajar hasta obtener N elementos, no todo el array si es gigante
+                        // Pero para simplificar en JS moderno:
+                        for (let i = features.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [features[i], features[j]] = [features[j], features[i]];
+                        }
+                        result = features.slice(0, n);
+                    }
+                    break;
+            }
+
+            return turf.featureCollection(result);
+        }
+    },
     // --- 6. OUTPUTS (WRITERS) ---
     writer_geojson: { cat:'6. Writers', label:'GeoJSON DL', icon:'fa-file-code', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(JSON.stringify(i[0]),'export.geojson','application/json'); return i[0]} },
     writer_csv: { cat:'6. Writers', label:'CSV DL', icon:'fa-file-csv', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toCSV(i[0]),'export.csv','text/csv'); return i[0]} },
