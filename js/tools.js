@@ -1017,20 +1017,31 @@ attr_renamer: {
             };
         }
     },
-attr_area: { 
+    attr_area: { 
         cat: '4. Attributes', label: 'Area Calc', icon: 'fa-ruler-combined', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Nombre del Campo</span>
                 <input type="text" df-field class="node-control" value="_area" placeholder="_area">
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Unidades</span>
+                <select df-unit class="node-control">
+                    <option value="1">Metros cuadrados (m²)</option>
+                    <option value="0.000001">Kilómetros cuadrados (km²)</option>
+                    <option value="0.0001">Hectáreas (ha)</option>
+                    <option value="10.7639">Pies cuadrados (ft²)</option>
+                </select>
             </div>`,
         run: (id, inputs, dom) => {
             const fieldName = dom.querySelector('[df-field]').value || '_area';
+            const multiplier = parseFloat(dom.querySelector('[df-unit]').value);
             
             inputs[0].features.forEach(f => {
-                // Calcula área en metros cuadrados
-                const area = turf.area(f);
-                f.properties[fieldName] = parseFloat(area.toFixed(2));
+                // Turf siempre calcula en m²
+                const areaSqM = turf.area(f);
+                // Aplicamos el factor de conversión
+                f.properties[fieldName] = parseFloat((areaSqM * multiplier).toFixed(4));
             });
 
             return inputs[0];
@@ -1043,13 +1054,32 @@ attr_area: {
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Nombre del Campo</span>
                 <input type="text" df-field class="node-control" value="_length" placeholder="_length">
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Unidades</span>
+                <select df-unit class="node-control">
+                    <option value="kilometers">Kilómetros (km)</option>
+                    <option value="meters">Metros (m)</option>
+                    <option value="centimeters">Centímetros (cm)</option>
+                    <option value="miles">Millas</option>
+                    <option value="feet">Pies</option>
+                </select>
             </div>`,
         run: (id, inputs, dom) => {
             const fieldName = dom.querySelector('[df-field]').value || '_length';
+            const unit = dom.querySelector('[df-unit]').value;
             
             inputs[0].features.forEach(f => {
-                // Calcula longitud en kilómetros
-                const length = turf.length(f, {units: 'kilometers'});
+                let length;
+                
+                if (unit === 'centimeters') {
+                    // Turf no tiene 'centimeters' nativo en versiones antiguas, calculamos en metros * 100
+                    length = turf.length(f, {units: 'meters'}) * 100;
+                } else {
+                    // Para el resto usamos la conversión nativa de Turf
+                    length = turf.length(f, {units: unit});
+                }
+                
                 f.properties[fieldName] = parseFloat(length.toFixed(4));
             });
 
