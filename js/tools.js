@@ -1644,9 +1644,88 @@ reader_osm: {
             return turf.featureCollection(result);
         }
     },
+
+    // --- 7. RASTER ---
+    sp_point_sampling: {
+        cat: '3. Spatial', label: 'Point Sampler', icon: 'fa-crosshairs', color: '#8e44ad', in: 1, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Raster Fuente (.tif)</span>
+                <input type="file" df-file class="node-control" accept=".tif,.tiff">
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Nombre del Campo Salida</span>
+                <input type="text" df-field class="node-control" value="value">
+            </div>
+            <div style="font-size:0.6em;color:#888;margin-top:2px">
+                Extrae el valor del píxel bajo cada punto.
+            </div>`,
+        run: async (id, inputs, dom) => {
+            // 1. Validaciones
+            if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de Puntos en la entrada.");
+            const fileInput = dom.querySelector('[df-file]');
+            if (!fileInput.files || fileInput.files.length === 0) throw new Error("Carga el archivo Raster (.tif) en el nodo.");
+            
+            const fieldName = dom.querySelector('[df-field]').value || 'value';
+            const file = fileInput.files[0];
+
+            if(window.log) window.log("⏳ Cargando y analizando Raster...");
+
+            // 2. Cargar Raster con Geoblaze
+            // Geoblaze lee el archivo y prepara la matemática espacial automáticamente
+            const georaster = await geoblaze.parse(file);
+
+            // 3. Procesar Puntos
+            const features = inputs[0].features;
+            let hits = 0;
+            let misses = 0;
+
+            // Iteramos sobre los puntos (clonamos para no mutar el original en el flujo)
+            // Usamos un bucle for tradicional para soportar async si fuera necesario, 
+            // aunque geoblaze.identify suele ser síncrono si el raster ya cargó.
+            const newFeatures = features.map(f => {
+                const newF = JSON.parse(JSON.stringify(f)); // Deep copy
+                
+                // Solo procesamos si es un Punto
+                if (turf.getType(newF) === 'Point') {
+                    try {
+                        const coords = turf.getCoords(newF); // [lon, lat]
+                        
+                        // IDENTIFY: La magia de Geoblaze
+                        // Devuelve el valor del píxel en esa coordenada [lon, lat]
+                        const result = geoblaze.identify(georaster, coords);
+
+                        // El resultado puede ser un número (banda única) o array (multibanda)
+                        // Si es array y tiene valores, cogemos el primero (Banda 1)
+                        // Si es un número válido, lo usamos.
+                        let val = null;
+                        if (Array.isArray(result) && result.length > 0) val = result[0];
+                        else if (typeof result === 'number') val = result;
+
+                        // Geoblaze devuelve 'NoData' a veces como valores muy bajos/altos o null
+                        if (val !== null && val !== undefined) {
+                            newF.properties[fieldName] = val;
+                            hits++;
+                        } else {
+                            newF.properties[fieldName] = null;
+                            misses++;
+                        }
+                    } catch (err) {
+                        newF.properties[fieldName] = null;
+                        misses++;
+                    }
+                }
+                return newF;
+            });
+
+            if(window.log) window.log(`✅ Sampling completo. Hits: ${hits}, Misses: ${misses}`);
+            
+            return turf.featureCollection(newFeatures);
+        }
+    },
     // --- 6. OUTPUTS (WRITERS) ---
-    writer_geojson: { cat:'6. Writers', label:'GeoJSON DL', icon:'fa-file-code', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(JSON.stringify(i[0]),'export.geojson','application/json'); return i[0]} },
-    writer_csv: { cat:'6. Writers', label:'CSV DL', icon:'fa-file-csv', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toCSV(i[0]),'export.csv','text/csv'); return i[0]} },
-    writer_kml: { cat:'6. Writers', label:'KML DL', icon:'fa-globe', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toKML(i[0]),'export.kml','application/vnd.google-earth.kml+xml'); return i[0]} },
-    writer_wkt: { cat:'6. Writers', label:'WKT Console', icon:'fa-font', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Ver en Log</div>`, run: (id,i)=>{i[0].features.forEach(f=>log(wellknown.stringify(f))); return i[0]} }
+    writer_geojson: { cat:'7. Writers', label:'GeoJSON DL', icon:'fa-file-code', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(JSON.stringify(i[0]),'export.geojson','application/json'); return i[0]} },
+    writer_csv: { cat:'7. Writers', label:'CSV DL', icon:'fa-file-csv', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toCSV(i[0]),'export.csv','text/csv'); return i[0]} },
+    writer_kml: { cat:'7. Writers', label:'KML DL', icon:'fa-globe', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toKML(i[0]),'export.kml','application/vnd.google-earth.kml+xml'); return i[0]} },
+    writer_wkt: { cat:'7. Writers', label:'WKT Console', icon:'fa-font', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Ver en Log</div>`, run: (id,i)=>{i[0].features.forEach(f=>log(wellknown.stringify(f))); return i[0]} }
 };
