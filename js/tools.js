@@ -728,6 +728,211 @@ const TOOL_REGISTRY = {
             return inputs[0];
         }
     },
+    attr_sorter: { 
+        cat: '4. Attributes', label: 'Sorter', icon: 'fa-sort-alpha-down', color: '#27ae60', in: 1, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Campo a Ordenar</span>
+                <input type="text" df-field class="node-control" placeholder="Ej: id">
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Dirección</span>
+                <select df-dir class="node-control">
+                    <option value="asc">Ascendente (A-Z, 0-9)</option>
+                    <option value="desc">Descendente (Z-A, 9-0)</option>
+                </select>
+            </div>`,
+        run: (id, inputs, dom) => {
+            const field = dom.querySelector('[df-field]').value;
+            const dir = dom.querySelector('[df-dir]').value;
+            const features = [...inputs[0].features]; // Copia para sortear
+
+            features.sort((a, b) => {
+                const valA = a.properties[field];
+                const valB = b.properties[field];
+
+                if (valA === valB) return 0;
+                
+                // Detección automática de tipo (Número vs Texto)
+                const isNum = typeof valA === 'number' && typeof valB === 'number';
+                
+                let comparison = 0;
+                if (isNum) {
+                    comparison = valA - valB;
+                } else {
+                    // Comparación segura de strings (nulls al final)
+                    comparison = String(valA || '').localeCompare(String(valB || ''), undefined, {numeric: true});
+                }
+
+                return dir === 'asc' ? comparison : -comparison;
+            });
+
+            return turf.featureCollection(features);
+        }
+    },
+
+    attr_string_formatter: { 
+        cat: '4. Attributes', label: 'String Formatter', icon: 'fa-text-width', color: '#27ae60', in: 1, out: 1,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Campo Objetivo</span>
+                <input type="text" df-field class="node-control" placeholder="Ej: name">
+            </div>
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Operación</span>
+                <select df-op class="node-control">
+                    <option value="upper">Mayúsculas (UPPER)</option>
+                    <option value="lower">Minúsculas (lower)</option>
+                    <option value="capitalize">Capitalizar (Titulo)</option>
+                    <option value="trim">Trim (Limpiar espacios)</option>
+                    <option value="replace">Reemplazar (A -> B)</option>
+                    <option value="concat">Concatenar (Suffix)</option>
+                    <option value="pad">Rellenar (PadStart 001)</option>
+                    <option value="template">Plantilla ({campo})</option>
+                </select>
+            </div>
+            <div>
+                <span style="font-size:0.7em;color:#aaa">Argumentos (Sep: | )</span>
+                <input type="text" df-args class="node-control" placeholder="old|new ó 000">
+            </div>
+            <div style="font-size:0.6em;color:#666;margin-top:2px">
+                Para Replace: "buscar|reemplazo"<br>
+                Para Template: "ID_{id}_zona"
+            </div>`,
+        run: (id, inputs, dom) => {
+            const field = dom.querySelector('[df-field]').value;
+            const op = dom.querySelector('[df-op]').value;
+            const argsRaw = dom.querySelector('[df-args]').value || '';
+            
+            // Parsear argumentos (separador pipe | para replace)
+            const args = argsRaw.split('|'); 
+            const arg1 = args[0];
+            const arg2 = args[1] || '';
+
+            inputs[0].features.forEach(f => {
+                let val = f.properties[field];
+                if (val === undefined || val === null) val = '';
+                val = String(val);
+
+                switch(op) {
+                    case 'upper': val = val.toUpperCase(); break;
+                    case 'lower': val = val.toLowerCase(); break;
+                    case 'trim': val = val.trim(); break;
+                    case 'capitalize': 
+                        val = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase(); 
+                        break;
+                    case 'replace': 
+                        // Reemplazo global simple
+                        val = val.split(arg1).join(arg2); 
+                        break;
+                    case 'concat': 
+                        val = val + arg1; 
+                        break;
+                    case 'pad':
+                        // Arg1: Longitud total, Arg2: Carácter relleno (defecto '0')
+                        const len = parseInt(arg1) || 3;
+                        const char = arg2 || '0';
+                        val = val.padStart(len, char);
+                        break;
+                    case 'template':
+                        // Reemplaza {campo} por el valor de ese campo
+                        // El argumento es la plantilla completa, ignorando el valor original del campo objetivo
+                        let tpl = argsRaw; 
+                        Object.keys(f.properties).forEach(k => {
+                            const regex = new RegExp(`{${k}}`, 'g');
+                            tpl = tpl.replace(regex, f.properties[k]);
+                        });
+                        val = tpl;
+                        break;
+                }
+                f.properties[field] = val;
+            });
+
+            return inputs[0];
+        }
+    },
+    attr_feature_merger: { 
+        cat: '4. Attributes', label: 'Feature Merger', icon: 'fa-code-branch', color: '#27ae60', in: 2, out: 3,
+        tpl: () => `
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Relación (Input1 : Input2)</span>
+                <input type="text" df-map class="node-control" placeholder="tipo:TIPO, id:ID_REF">
+                <div style="font-size:0.6em;color:#666;font-style:italic">Separar pares por comas.</div>
+            </div>
+            <div style="font-size:0.6em;color:#888;margin-top:4px">
+                Out 1: Merged<br>Out 2: Not Merged (Input 1)<br>Out 3: Unused (Input 2)
+            </div>`,
+        run: (id, inputs, dom) => {
+            const mapStr = dom.querySelector('[df-map]').value;
+            const reqFeatures = inputs[0].features; // Requestor (Mantiene geometría)
+            const supFeatures = inputs[1].features; // Supplier (Aporta atributos)
+
+            // Parsear el mapeo "campo1:campo2, campoA:campoB"
+            const joinPairs = mapStr.split(',').map(p => p.split(':').map(s => s.trim()));
+            if (joinPairs.length === 0 || !joinPairs[0][0]) throw new Error("Define campos de unión");
+
+            // Función auxiliar para generar Hash Keys
+            const getKey = (props, fields) => fields.map(f => String(props[f] || 'null')).join('|_|');
+
+            // 1. Indexar el Supplier (Input 2)
+            const supMap = new Map();
+            const supKeys = joinPairs.map(p => p[1]); // Lado derecho del par
+            
+            supFeatures.forEach((f, idx) => {
+                const key = getKey(f.properties, supKeys);
+                // Si hay duplicados en el supplier, nos quedamos con el primero (First Match)
+                if (!supMap.has(key)) {
+                    supMap.set(key, { props: f.properties, originalIdx: idx, used: false });
+                }
+            });
+
+            const merged = [];
+            const notMerged = [];
+
+            // 2. Procesar Requestor (Input 1)
+            const reqKeys = joinPairs.map(p => p[0]); // Lado izquierdo del par
+
+            reqFeatures.forEach(f => {
+                const key = getKey(f.properties, reqKeys);
+                
+                if (supMap.has(key)) {
+                    // Match encontrado!
+                    const supData = supMap.get(key);
+                    supData.used = true; // Marcamos supplier como usado
+
+                    // Clonamos feature para no mutar original
+                    const newF = JSON.parse(JSON.stringify(f));
+                    // Fusionamos atributos (Supplier sobrescribe a Requestor en caso de colisión)
+                    newF.properties = { ...newF.properties, ...supData.props };
+                    merged.push(newF);
+                } else {
+                    // No match
+                    notMerged.push(f);
+                }
+            });
+
+            // 3. Recolectar Unused Suppliers (Input 2 que sobraron)
+            const unusedSup = supFeatures.filter((f, idx) => {
+                // Como supMap solo guarda el primero de cada serie duplicada, 
+                // necesitamos una forma de saber si este feature específico fue "tocado".
+                // Una forma robusta es volver a generar su key y ver si esa key está marcada como usada en el mapa.
+                const key = getKey(f.properties, supKeys);
+                const mapEntry = supMap.get(key);
+                // Si la entrada del mapa fue usada, consideramos todos los duplicados de esa clave como usados?
+                // Generalmente en FeatureMerger 1:1, los duplicados del supplier que no se usaron son "Unused".
+                // Pero para simplificar lógica visual: Si la clave se usó, el "concepto" se usó.
+                // Aquí seremos estrictos: Solo devolvemos los que NO fueron la fuente de datos.
+                
+                return !mapEntry || !mapEntry.used;
+            });
+
+            return { 
+                output_1: turf.featureCollection(merged), 
+                output_2: turf.featureCollection(notMerged),
+                output_3: turf.featureCollection(unusedSup)
+            };
+        }
+    },
     attr_area: { 
         cat: '4. Attributes', label: 'Area Calc', icon: 'fa-ruler-combined', color: '#27ae60', in: 1, out: 1,
         params: [
