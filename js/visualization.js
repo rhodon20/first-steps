@@ -70,7 +70,7 @@
                     // Popups
                     onEachFeature: function(feature, layer) {
                         if (feature.properties) {
-                            let table = '<table style="font-size:10px">';
+                            let table = '<table style="font-size:10px; color: #333;">';
                             for (let k in feature.properties) {
                                 if(k.startsWith('_')) continue; // Ocultar props internas
                                 let val = feature.properties[k];
