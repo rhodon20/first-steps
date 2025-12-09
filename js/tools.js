@@ -728,7 +728,9 @@ reader_osm: {
 
     // --- 2.2 VECTOR - SPATIAL ANALYSIS ---
     sp_min_area_solver: { 
-        cat: '2.2 VECTOR - SPATIAL', label: 'MinArea Solver', icon: 'fa-compress-alt', color: '#8e44ad', in: 1, out: 2,
+        cat: '2.2 VECTOR - SPATIAL', label: 'MinArea Solver', icon: 'fa-compress-alt', color: '#8e44ad', 
+        in: 1, 
+        out: 3, // Out 1: Intactos | Out 2: Fusionados (Merged) | Out 3: Fallidos (Failed)
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Criterio de Área</span>
@@ -744,92 +746,143 @@ reader_osm: {
             <div>
                 <span style="font-size:0.7em;color:#aaa">Modo de Acción</span>
                 <select df-mode class="node-control">
-                    <option value="delete">Solo Eliminar</option>
                     <option value="merge">Fusionar con vecino (Merge)</option>
+                    <option value="delete">Solo Eliminar</option>
                 </select>
             </div>
-            <div style="font-size:0.6em;color:#666;margin-top:2px">Out 1: Dataset Limpio | Out 2: Eliminados</div>`,
+            <div style="font-size:0.6em;color:#666;margin-top:4px">
+                <b>Out 1:</b> Passed (Intactos)<br>
+                <b>Out 2:</b> Merged (Fusionados)<br>
+                <b>Out 3:</b> Failed (Eliminados)
+            </div>`,
         run: (id, inputs, dom) => {
             const minVal = parseFloat(dom.querySelector('[df-val]').value);
             const multiplier = parseFloat(dom.querySelector('[df-unit]').value);
             const mode = dom.querySelector('[df-mode]').value;
             const thresholdSqM = minVal * multiplier;
 
-            const kept = [];
-            const slivers = [];
-            const removed = []; // Los que salen por el output 2
+            if (!inputs[0] || !inputs[0].features) throw new Error("Entrada vacía");
 
-            // 1. Clasificación inicial
-            turf.flatten(inputs[0]).features.forEach(f => {
+            // 1. Preprocesamiento: Calculamos áreas y BBoxes para optimizar
+            let items = inputs[0].features.map((f, i) => {
                 const area = turf.area(f);
-                if (area < thresholdSqM) {
-                    slivers.push(f);
-                } else {
-                    kept.push(f);
-                }
+                return {
+                    id: i,
+                    feature: f,
+                    geometry: f.geometry,
+                    properties: f.properties,
+                    area: area,
+                    bbox: turf.bbox(f),
+                    isSliver: area < thresholdSqM,
+                    isDeleted: false,
+                    isModified: false
+                };
             });
 
+            // Si es solo borrar, cortamos rápido
             if (mode === 'delete') {
-                // Modo simple: lo pequeño se va al output 2
+                const passed = items.filter(i => !i.isSliver).map(i => i.feature);
+                const failed = items.filter(i => i.isSliver).map(i => i.feature);
                 return { 
-                    output_1: turf.featureCollection(kept), 
-                    output_2: turf.featureCollection(slivers) 
+                    output_1: turf.featureCollection(passed), 
+                    output_2: turf.featureCollection([]), 
+                    output_3: turf.featureCollection(failed) 
                 };
             }
 
-            // 2. Modo Merge (Algoritmo de frontera compartida)
-            // Nota: Esto es intensivo computacionalmente (O(N*M))
-            const sliversToDelete = [];
+            // 2. MODO MERGE: Algoritmo "Greedy Absorb"
+            // Ordenamos por área ASCENDENTE. Los pequeños intentan salvarse primero fusionándose.
+            // Al ordenar así, permitimos que dos pequeños se unan y quizás superen el umbral.
+            items.sort((a, b) => a.area - b.area);
 
-            slivers.forEach(sliver => {
-                let bestNeighborIdx = -1;
+            items.forEach((item, idx) => {
+                // Si ya fue borrado (absorbido por otro) o ya cumple el área, pasamos
+                if (item.isDeleted || item.area >= thresholdSqM) return;
+
+                // Buscamos el mejor vecino en TODOS los items (no solo los validos)
+                let bestNeighbor = null;
                 let maxSharedLen = 0;
-                
-                // Convertimos el sliver a línea una vez para comparar
-                const sliverLine = turf.polygonToLine(sliver);
-                const sliverBbox = turf.bbox(sliver); // Pre-filtro espacial
 
-                kept.forEach((neighbor, idx) => {
-                    // Filtro rápido: Si las cajas no se tocan, saltar
-                    const nBbox = turf.bbox(neighbor);
-                    if (sliverBbox[2] < nBbox[0] || sliverBbox[0] > nBbox[2] || 
-                        sliverBbox[3] < nBbox[1] || sliverBbox[1] > nBbox[3]) return;
+                // Iteramos sobre todos para encontrar candidatos
+                // (Optimización: solo chequear items que no son él mismo y no están borrados)
+                for (let j = 0; j < items.length; j++) {
+                    const candidate = items[j];
+                    if (item.id === candidate.id || candidate.isDeleted) continue;
+
+                    // A. Filtro Rápido por BBox
+                    if (item.bbox[2] < candidate.bbox[0] || item.bbox[0] > candidate.bbox[2] || 
+                        item.bbox[3] < candidate.bbox[1] || item.bbox[1] > candidate.bbox[3]) continue;
 
                     try {
-                        // Si se tocan espacialmente, calculamos longitud de borde compartido
-                        if (turf.booleanIntersects(sliver, neighbor)) {
-                            const neighborLine = turf.polygonToLine(neighbor);
-                            const overlap = turf.lineOverlap(sliverLine, neighborLine);
-                            const len = turf.length(overlap);
+                        // B. Filtro Geométrico (Se tocan?)
+                        if (turf.booleanIntersects(item.feature, candidate.feature)) {
+                            // C. Criterio: Mayor borde compartido
+                            // Convertimos a líneas para medir el contacto
+                            const l1 = turf.polygonToLine(item.feature);
+                            const l2 = turf.polygonToLine(candidate.feature);
+                            const overlap = turf.lineOverlap(l1, l2);
                             
-                            if (len > maxSharedLen) {
-                                maxSharedLen = len;
-                                bestNeighborIdx = idx;
+                            if (overlap && overlap.features.length > 0) {
+                                const len = turf.length(overlap);
+                                if (len > maxSharedLen) {
+                                    maxSharedLen = len;
+                                    bestNeighbor = candidate;
+                                }
+                            } else if (!bestNeighbor) {
+                                // Fallback: Si se tocan pero lineOverlap falla (casos raros), 
+                                // lo guardamos como candidato si no hay otro mejor.
+                                bestNeighbor = candidate; 
                             }
                         }
-                    } catch(e) {}
-                });
+                    } catch(e) { /* Error topológico en turf, ignorar */ }
+                }
 
-                if (bestNeighborIdx !== -1) {
-                    // Fusionar con el mejor vecino encontrado
+                // 3. Ejecutar Fusión
+                if (bestNeighbor) {
                     try {
-                        const union = turf.union(kept[bestNeighborIdx], sliver);
-                        // Actualizamos el vecino en la lista 'kept' para que crezca
-                        // y pueda absorber otros slivers adyacentes
-                        kept[bestNeighborIdx] = union;
-                    } catch(e) {
-                        // Si falla la unión geométrica, lo marcamos para eliminar
-                        sliversToDelete.push(sliver);
+                        const union = turf.union(bestNeighbor.feature, item.feature);
+                        
+                        // ACTUALIZACIÓN DINÁMICA:
+                        // El vecino crece. Actualizamos sus datos para que pueda absorber más o pasar el umbral.
+                        bestNeighbor.feature = union; // Geometría nueva
+                        bestNeighbor.geometry = union.geometry;
+                        bestNeighbor.area = turf.area(union); // Nueva área
+                        bestNeighbor.bbox = turf.bbox(union); // Nuevo BBox
+                        bestNeighbor.isModified = true; // Marcamos como "Merged"
+                        
+                        // El item actual desaparece (ha sido absorbido)
+                        item.isDeleted = true; 
+
+                    } catch (err) {
+                        console.warn("Error en union geometry", err);
+                    }
+                }
+            });
+
+            // 4. Clasificación Final de Salida
+            const outPassed = [];
+            const outMerged = [];
+            const outFailed = [];
+
+            items.forEach(i => {
+                if (i.isDeleted) return; // Absorvidos, no salen
+
+                // Verificamos umbral final (por si un merged sigue siendo pequeño)
+                if (i.area >= thresholdSqM) {
+                    if (i.isModified) {
+                        outMerged.push(i.feature); // Cumple y fue modificado
+                    } else {
+                        outPassed.push(i.feature); // Cumple y es original
                     }
                 } else {
-                    // No tiene vecino (es una isla), se elimina
-                    sliversToDelete.push(sliver);
+                    outFailed.push(i.feature); // Aún después de intentar merge, no cumple
                 }
             });
 
             return { 
-                output_1: turf.featureCollection(kept), 
-                output_2: turf.featureCollection(sliversToDelete) 
+                output_1: turf.featureCollection(outPassed), 
+                output_2: turf.featureCollection(outMerged),
+                output_3: turf.featureCollection(outFailed) 
             };
         }
     },
