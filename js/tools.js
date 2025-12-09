@@ -1667,7 +1667,48 @@ reader_osm: {
             return turf.featureCollection(allFeatures);
         } 
     },    
-    util_holder: { cat:'3. UTILS', label:'Inspector', icon:'fa-eye', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div style="font-size:0.7em; color:#aaa">Passthrough</div>`, run: (id,i)=>i[0] },
+    // util_holder: { cat:'3. UTILS', label:'Inspector', icon:'fa-eye', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div style="font-size:0.7em; color:#aaa">Passthrough</div>`, run: (id,i)=>i[0] },
+    util_holder: { 
+        cat: '3. UTILS', label: 'Inspector', icon: 'fa-eye', color: '#7f8c8d', 
+        in: 1, out: 1, 
+        tpl: (id) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px">
+                <span style="font-size:0.7em;color:#aaa">Color Visor</span>
+                <input type="color" df-color class="node-control" value="#e74c3c" 
+                    style="height:22px; width:50px; border:none; cursor:pointer; padding:0;">
+            </div>
+            <div style="font-size:0.6em;color:#666">
+                Pasa los datos y fuerza el color en el mapa.
+            </div>`,
+        run: (id, inputs, dom) => {
+            // 1. Si no hay entrada, no hay salida
+            if (!inputs[0]) return null;
+
+            // 2. Leemos el color que el usuario ha elegido en este nodo específico
+            const colorInput = dom.querySelector('[df-color]');
+            const userColor = colorInput ? colorInput.value : '#e74c3c';
+
+            // 3. ESTRATEGIA DE INYECCIÓN DE ESTILO
+            // Clonamos superficialmente el FeatureCollection (el contenedor)
+            // Mantenemos las features por referencia (para no duplicar RAM)
+            const output = { ...inputs[0] };
+
+            // Inyectamos una propiedad reservada que tu visor de mapas deberá leer.
+            // Sobrescribimos cualquier estilo previo.
+            output._custom_style = {
+                color: userColor,
+                fillColor: userColor,
+                weight: 3,         // Un poco más grueso para destacar
+                opacity: 1,
+                fillOpacity: 0.5
+            };
+            
+            // Log opcional para debug
+            // if(window.log) window.log(`👁️ Inspector ID ${id}: Color ${userColor}`);
+
+            return output;
+        }
+    },
     util_sampler: { 
         cat: '3. UTILS', label: 'Random Sampler', icon: 'fa-dice', color: '#7f8c8d', in: 1, out: 1,
         tpl: () => `
