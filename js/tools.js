@@ -1714,7 +1714,6 @@ reader_osm: {
                 Extrae el valor del píxel bajo cada punto.
             </div>`,
         run: async (id, inputs, dom) => {
-            // 1. Validaciones
             if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de Puntos.");
             const fileInput = dom.querySelector('[df-file]');
             if (!fileInput.files || fileInput.files.length === 0) throw new Error("Carga el archivo Raster.");
@@ -1722,14 +1721,24 @@ reader_osm: {
             const fieldName = dom.querySelector('[df-field]').value || 'value';
             const file = fileInput.files[0];
 
-            if(window.log) window.log("⏳ Analizando píxeles...");
+            if(window.log) window.log("⏳ Analizando Raster con modo recursivo...");
 
-            // 2. Cargar Raster
             const georaster = await geoblaze.parse(file);
             const features = inputs[0].features;
             
             let hits = 0;
             let misses = 0;
+
+            // Función Recursiva para extraer el primer número válido
+            const getPixelValue = (v) => {
+                if (v === null || v === undefined) return null;
+                if (typeof v === 'number') return v;
+                // Si es Array o TypedArray (Float32Array, etc), miramos dentro
+                if (v.length && v.length > 0) {
+                    return getPixelValue(v[0]); // Recursión: profundiza en el primer elemento
+                }
+                return null;
+            };
 
             const newFeatures = features.map((f, idx) => {
                 const newF = JSON.parse(JSON.stringify(f)); 
@@ -1737,32 +1746,35 @@ reader_osm: {
                 if (turf.getType(newF) === 'Point') {
                     try {
                         const coords = turf.getCoords(newF);
-                        // Identify devuelve el valor del píxel (puede ser Número, Array o TypedArray)
-                        const result = geoblaze.identify(georaster, coords);
+                        const raw = geoblaze.identify(georaster, coords);
 
-                        let val = null;
+                        // Intentamos extraer el número
+                        let val = getPixelValue(raw);
 
-                        // Lógica de Extracción Robusta
-                        if (typeof result === 'number') {
-                            // Caso A: Es un número directo
-                            val = result;
-                        } else if (result && result.length !== undefined && result.length > 0) {
-                            // Caso B: Es Array o TypedArray (Float32Array, etc.) -> Tomamos banda 0
-                            val = result[0];
-                        }
-
-                        // Limpieza y validación final
-                        if (val !== null && val !== undefined && !isNaN(val)) {
-                            // Redondeamos para evitar float noise (ej: 12.00000001)
+                        if (val !== null && !isNaN(val)) {
+                            // ÉXITO: Tenemos un número
                             newF.properties[fieldName] = parseFloat(Number(val).toFixed(4));
                             hits++;
                         } else {
-                            newF.properties[fieldName] = null; // O "NoData"
+                            // FALLO: No es número o es nulo.
                             misses++;
+                            
+                            // DEBUG VISUAL: Si hay datos crudos pero no pudimos sacar número,
+                            // lo guardamos como texto para que NO salga [Obj] y veas qué es.
+                            if (raw !== null && raw !== undefined) {
+                                try {
+                                    // Array.from convierte TypedArrays a arrays normales leibles
+                                    const debugStr = JSON.stringify(raw.length ? Array.from(raw) : raw);
+                                    newF.properties[fieldName] = "RAW: " + debugStr;
+                                } catch(e) {
+                                    newF.properties[fieldName] = "Error_Format";
+                                }
+                            } else {
+                                newF.properties[fieldName] = null; // "NoData" real
+                            }
                         }
-
                     } catch (err) {
-                        newF.properties[fieldName] = null;
+                        newF.properties[fieldName] = "Error_Calc";
                         misses++;
                     }
                 }
@@ -1770,7 +1782,6 @@ reader_osm: {
             });
 
             if(window.log) window.log(`✅ Sampling completo. Hits: ${hits}, Misses: ${misses}`);
-            
             return turf.featureCollection(newFeatures);
         }
     },
