@@ -142,49 +142,46 @@ reader_osm: {
     //     }
     // },
     reader_geotiff: { 
-        cat: '1. READERS', label: 'GeoTIFF Reader', icon: 'fa-layer-group', color: '#e67e22', 
-        in: 0, 
-        out: 1, // Devuelve: FeatureCollection (BBox) + Datos binarios adjuntos
+        cat: '1. READERS', label: 'GeoTIFF Reader', icon: 'fa-file-image', color: '#e67e22', 
+        in: 0, out: 1,
         tpl: (id) => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Archivo .tif / .tiff</span>
                 <input type="file" df-file class="node-control" accept=".tif,.tiff">
             </div>
             <div style="font-size:0.6em;color:#666">
-                Lee Raster y pasa datos binarios en memoria.
+                Carga optimizada con referencia en memoria.
             </div>`,
         run: async (id, i, d) => {
             const fileInput = d.querySelector('[df-file]');
             if (!fileInput.files || fileInput.files.length === 0) throw new Error("Selecciona un archivo TIFF");
 
             const file = fileInput.files[0];
-            const arrayBuffer = await file.arrayBuffer();
+            const arrayBuffer = await file.arrayBuffer(); // Leemos binario
             
-            // 1. Leemos metadatos rápidos con GeoTIFF.js
+            // --- TRUCO DE CACHÉ GLOBAL ---
+            // Generamos un ID único y guardamos el binario pesado en window
+            // Esto evita que se rompa al pasar por JSON entre nodos.
+            const cacheId = 'tiff_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            if (!window._tiff_cache) window._tiff_cache = {};
+            window._tiff_cache[cacheId] = arrayBuffer;
+
+            // Leemos metadatos básicos para visualización
             const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
             const image = await tiff.getImage(); 
-            const width = image.getWidth();
-            const height = image.getHeight();
-            const samples = image.getSamplesPerPixel(); 
             const bbox = image.getBoundingBox(); 
-
-            // 2. Creamos el Polígono del BBox (para visualización en mapa)
             const poly = turf.bboxPolygon(bbox);
 
-            // 3. ESTRATEGIA DE PASO DE DATOS:
-            // Guardamos el ArrayBuffer crudo en las propiedades.
-            // Nota: Esto funciona en memoria. Si serializas a JSON texto, el buffer se pierde.
+            // Pasamos solo la REFERENCIA (ID)
             poly.properties = {
                 source_file: file.name,
                 type: 'raster_bbox',
-                width: width,
-                height: height,
-                bands: samples,
-                _raster_ref: true,
-                _tiff_buffer: arrayBuffer // <--- AQUÍ ESTÁ LA CLAVE
+                width: image.getWidth(),
+                height: image.getHeight(),
+                _raster_ref_id: cacheId // <--- La llave maestra
             };
 
-            if(window.log) window.log(`📷 Raster cargado en memoria: ${width}x${height}px`);
+            if(window.log) window.log(`📷 Raster cargado en caché (${cacheId})`);
 
             return turf.featureCollection([poly]);
         }
@@ -1833,7 +1830,7 @@ reader_osm: {
     // },
     sp_point_sampling: {
         cat: '4. RASTER', label: 'Multi-Band Sampler', icon: 'fa-crosshairs', color: '#8e44ad', 
-        in: 2, // In 0: Puntos (Opcional), In 1: Raster (Obligatorio)
+        in: 2, 
         out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
@@ -1841,41 +1838,52 @@ reader_osm: {
                 <input type="text" df-prefix class="node-control" value="val" placeholder="Ej: val">
             </div>
             <div>
-                <span style="font-size:0.7em;color:#aaa">Grid Step (Solo si no hay puntos)</span>
-                <input type="number" df-step class="node-control" value="1" min="1" title="1 = Todos los pixeles. 10 = 1 de cada 10">
-            </div>
-            <div style="font-size:0.6em;color:#888;margin-top:4px">
-                <b>Conectado:</b> Muestrea tus puntos.<br>
-                <b>Desconectado:</b> Crea puntos del Raster.
+                <span style="font-size:0.7em;color:#aaa">Grid Step (Si no hay puntos)</span>
+                <input type="number" df-step class="node-control" value="1" min="1">
             </div>`,
         run: async (id, inputs, dom) => {
-            // 1. Validar Raster (Input 1 es OBLIGATORIO)
-            if (!inputs[1] || !inputs[1].features || inputs[1].features.length === 0) 
-                throw new Error("❌ Conecta el GeoTIFF Reader en la entrada 1.");
+            // 1. DETECCIÓN INTELIGENTE DE ENTRADAS
+            // Buscamos cuál de los inputs tiene la propiedad '_raster_ref_id'
+            let rasterInput = null;
+            let pointsInput = null;
 
-            // Recuperar Buffer desde memoria (pasado por el Reader anterior)
-            const rasterFeature = inputs[1].features[0];
-            const buffer = rasterFeature.properties._tiff_buffer;
-            if (!buffer) throw new Error("❌ El nodo Raster no contiene datos binarios.");
+            // Iteramos inputs válidos para clasificarlos
+            inputs.forEach(inp => {
+                if (inp && inp.features && inp.features.length > 0) {
+                    // Comprobamos si la primera feature tiene el ID del raster
+                    if (inp.features[0].properties && inp.features[0].properties._raster_ref_id) {
+                        rasterInput = inp;
+                    } else {
+                        pointsInput = inp; // Si no es raster, son puntos
+                    }
+                }
+            });
+
+            if (!rasterInput) throw new Error("❌ No se detectó el GeoTIFF. Asegúrate de conectar el Reader.");
+
+            // 2. RECUPERACIÓN DEL BINARIO DESDE CACHÉ GLOBAL
+            const refId = rasterInput.features[0].properties._raster_ref_id;
+            const buffer = window._tiff_cache ? window._tiff_cache[refId] : null;
+
+            if (!buffer) throw new Error("❌ El archivo expiró o no está en memoria. Vuelve a cargar el Reader.");
 
             const prefix = dom.querySelector('[df-prefix]').value || 'val';
             const step = parseInt(dom.querySelector('[df-step]').value) || 1;
 
-            if(window.log) window.log("⏳ Procesando Raster...");
+            if(window.log) window.log("⏳ Parseando Raster desde caché global...");
 
+            // 3. PROCESAMIENTO CON GEOBLAZE
             const georaster = await geoblaze.parse(buffer);
             let outputFeatures = [];
             let hits = 0;
 
-            // ==========================================
-            // MODO 1: MUESTREO DE PUNTOS (Si hay Input 0)
-            // ==========================================
-            if (inputs[0] && inputs[0].features && inputs[0].features.length > 0) {
-                const features = inputs[0].features;
-                if(window.log) window.log(`📍 Modo: Muestreo de ${features.length} puntos externos.`);
+            // CASO A: Tenemos puntos de entrada -> Muestreamos esos puntos
+            if (pointsInput) {
+                const features = pointsInput.features;
+                if(window.log) window.log(`📍 Muestreando ${features.length} puntos conectados...`);
 
                 outputFeatures = await Promise.all(features.map(async (f) => {
-                    const newF = JSON.parse(JSON.stringify(f));
+                    const newF = JSON.parse(JSON.stringify(f)); // Clonamos para no afectar el original
                     if (turf.getType(newF) === 'Point') {
                         try {
                             const coords = turf.getCoords(newF);
@@ -1887,55 +1895,39 @@ reader_osm: {
                     return newF;
                 }));
             } 
-            // ==========================================
-            // MODO 2: GENERACIÓN DE GRID (Si NO hay Input 0)
-            // ==========================================
+            // CASO B: No hay puntos -> Generamos Grid del Raster
             else {
-                const width = georaster.width;
-                const height = georaster.height;
-                const pixelW = georaster.pixelWidth;
-                const pixelH = georaster.pixelHeight;
-                const minX = georaster.xmin;
-                const maxY = georaster.ymax;
+                if(window.log) window.log(`▦ Generando Grid automático (Step: ${step})...`);
                 
-                // Estimación de seguridad
-                const totalPoints = Math.floor((width/step) * (height/step));
-                if(window.log) window.log(`▦ Modo: Grid Automático. Generando ~${totalPoints} puntos...`);
-                if (totalPoints > 200000) console.warn("⚠️ Cuidado: Generar +200k puntos puede ralentizar el navegador.");
+                const { width, height, pixelWidth, pixelHeight, xmin, ymax } = georaster;
+                
+                // Verificación de seguridad
+                const estimatedPoints = (width / step) * (height / step);
+                if(estimatedPoints > 150000) console.warn(`⚠️ Generando muchos puntos (${Math.round(estimatedPoints)}). Puede tardar.`);
 
-                // Iteramos píxeles (Optimizamos usando acceso directo al array 'values' en vez de 'identify')
-                // Geoblaze guarda valores en: georaster.values[band][y][x]
                 for (let y = 0; y < height; y += step) {
                     for (let x = 0; x < width; x += step) {
-                        
-                        // 1. Calcular Centroide del Píxel
-                        // Nota: GeoTIFF coordenadas suelen ser esquina superior izquierda. 
-                        // Centro X = minX + (x * w) + (w/2)
-                        // Centro Y = maxY - (y * h) - (h/2)  (Asumiendo pixelHeight positivo en metadatos estándar)
-                        const centX = minX + (x * pixelW) + (pixelW / 2);
-                        const centY = maxY - (y * pixelH) - (pixelH / 2);
-
-                        // 2. Extraer valor directamente (Mucho más rápido que identify espacial)
+                        // Acceso directo a matriz de valores (Optimizado)
                         const rawValues = georaster.values.map(band => band[y][x]);
+                        
+                        // Calculamos centroide geográfico del píxel
+                        const centX = xmin + (x * pixelWidth) + (pixelWidth / 2);
+                        const centY = ymax - (y * pixelHeight) - (pixelHeight / 2);
 
-                        // 3. Crear Feature
                         const newF = turf.point([centX, centY]);
-                        
-                        // 4. Asignar valores
-                        // Si solo hay 1 banda, pasamos el valor, si hay más, el array.
                         const valToAssign = rawValues.length === 1 ? rawValues[0] : rawValues;
-                        _assignValues(newF, valToAssign, prefix);
                         
+                        _assignValues(newF, valToAssign, prefix);
                         outputFeatures.push(newF);
                         hits++;
                     }
                 }
             }
 
-            if(window.log) window.log(`✅ Finalizado. ${hits} puntos procesados.`);
+            if(window.log) window.log(`✅ Finalizado. ${hits} registros procesados.`);
             return turf.featureCollection(outputFeatures);
 
-            // --- Función auxiliar de asignación ---
+            // Función auxiliar para asignar valores al properties
             function _assignValues(feature, raw, pfix) {
                 if (Array.isArray(raw)) {
                     raw.forEach((val, i) => {
