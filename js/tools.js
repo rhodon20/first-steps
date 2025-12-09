@@ -1872,106 +1872,145 @@ reader_osm: {
                 <span style="font-size:0.7em;color:#aaa">Prefijo Salida</span>
                 <input type="text" df-prefix class="node-control" value="val" placeholder="Ej: val">
             </div>
+            <div style="margin-bottom:4px">
+                <span style="font-size:0.7em;color:#aaa">Modo Extracción</span>
+                <select df-mode class="node-control" onchange="this.nextElementSibling.style.display = this.value === 'select' ? 'block' : 'none'">
+                    <option value="all">Todas las Bandas</option>
+                    <option value="select">Bandas Específicas</option>
+                </select>
+                <input type="text" df-bands class="node-control" style="display:none;margin-top:2px" placeholder="Indices (ej: 0, 2, 4)" title="Indices separados por coma">
+            </div>
             <div>
                 <span style="font-size:0.7em;color:#aaa">Grid Step (Si no hay puntos)</span>
                 <input type="number" df-step class="node-control" value="1" min="1">
             </div>`,
         run: async (id, inputs, dom) => {
             // 1. DETECCIÓN INTELIGENTE DE ENTRADAS
-            // Buscamos cuál de los inputs tiene la propiedad '_raster_ref_id'
             let rasterInput = null;
             let pointsInput = null;
 
-            // Iteramos inputs válidos para clasificarlos
             inputs.forEach(inp => {
                 if (inp && inp.features && inp.features.length > 0) {
-                    // Comprobamos si la primera feature tiene el ID del raster
                     if (inp.features[0].properties && inp.features[0].properties._raster_ref_id) {
                         rasterInput = inp;
                     } else {
-                        pointsInput = inp; // Si no es raster, son puntos
+                        pointsInput = inp; 
                     }
                 }
             });
 
-            if (!rasterInput) throw new Error("❌ No se detectó el GeoTIFF. Asegúrate de conectar el Reader.");
+            if (!rasterInput) throw new Error("❌ No se detectó el GeoTIFF. Conecta el Reader.");
 
-            // 2. RECUPERACIÓN DEL BINARIO DESDE CACHÉ GLOBAL
+            // 2. RECUPERACIÓN DEL BINARIO
             const refId = rasterInput.features[0].properties._raster_ref_id;
             const buffer = window._tiff_cache ? window._tiff_cache[refId] : null;
+            if (!buffer) throw new Error("❌ El archivo expiró. Recarga el Reader.");
 
-            if (!buffer) throw new Error("❌ El archivo expiró o no está en memoria. Vuelve a cargar el Reader.");
-
+            // 3. PARAMS UI
             const prefix = dom.querySelector('[df-prefix]').value || 'val';
             const step = parseInt(dom.querySelector('[df-step]').value) || 1;
+            const mode = dom.querySelector('[df-mode]').value; // 'all' o 'select'
+            const bandsStr = dom.querySelector('[df-bands]').value;
 
-            if(window.log) window.log("⏳ Parseando Raster desde caché global...");
+            // Parseamos bandas seleccionadas
+            let selectedIndices = [];
+            if (mode === 'select') {
+                selectedIndices = bandsStr.split(',')
+                    .map(s => parseInt(s.trim()))
+                    .filter(n => !isNaN(n));
+                if (selectedIndices.length === 0) throw new Error("Modo Selección: Indica al menos un índice (ej: 0).");
+            }
 
-            // 3. PROCESAMIENTO CON GEOBLAZE
+            if(window.log) window.log(`⏳ Procesando Raster (${mode === 'select' ? 'Bandas: ' + selectedIndices.join(',') : 'Todas'})...`);
+
+            // 4. PARSEO GEOBLAZE
             const georaster = await geoblaze.parse(buffer);
             let outputFeatures = [];
             let hits = 0;
 
-            // CASO A: Tenemos puntos de entrada -> Muestreamos esos puntos
+            // --- FUNCIÓN HELPER ASIGNACIÓN ---
+            // Asigna valor a properties respetando el índice original de la banda
+            const _assign = (feat, val, bandIdx) => {
+                if (val !== null && !isNaN(val)) {
+                    feat.properties[`${prefix}_b${bandIdx}`] = parseFloat(Number(val).toFixed(4));
+                } else {
+                    feat.properties[`${prefix}_b${bandIdx}`] = null;
+                }
+            };
+
+            // ==========================================
+            // CASO A: MUESTREO DE PUNTOS (Identify)
+            // ==========================================
             if (pointsInput) {
                 const features = pointsInput.features;
-                if(window.log) window.log(`📍 Muestreando ${features.length} puntos conectados...`);
+                if(window.log) window.log(`📍 Muestreando ${features.length} puntos...`);
 
                 outputFeatures = await Promise.all(features.map(async (f) => {
-                    const newF = JSON.parse(JSON.stringify(f)); // Clonamos para no afectar el original
+                    const newF = JSON.parse(JSON.stringify(f));
                     if (turf.getType(newF) === 'Point') {
                         try {
                             const coords = turf.getCoords(newF);
-                            const raw = await geoblaze.identify(georaster, coords);
-                            _assignValues(newF, raw, prefix);
+                            // Identify devuelve: Number (1 banda) o Array (N bandas)
+                            let raw = await geoblaze.identify(georaster, coords);
+                            
+                            // Normalizamos a Array siempre para facilitar lógica
+                            if (!Array.isArray(raw)) raw = [raw];
+
+                            if (mode === 'all') {
+                                raw.forEach((val, idx) => _assign(newF, val, idx));
+                            } else {
+                                // Solo las seleccionadas
+                                selectedIndices.forEach(idx => {
+                                    if (idx < raw.length) _assign(newF, raw[idx], idx);
+                                });
+                            }
                             hits++;
                         } catch (e) { /* Fuera de rango */ }
                     }
                     return newF;
                 }));
             } 
-            // CASO B: No hay puntos -> Generamos Grid del Raster
+            // ==========================================
+            // CASO B: GENERACIÓN GRID (Direct Access)
+            // ==========================================
             else {
-                if(window.log) window.log(`▦ Generando Grid automático (Step: ${step})...`);
-                
                 const { width, height, pixelWidth, pixelHeight, xmin, ymax } = georaster;
                 
-                // Verificación de seguridad
+                // Advertencia volumen
                 const estimatedPoints = (width / step) * (height / step);
-                if(estimatedPoints > 150000) console.warn(`⚠️ Generando muchos puntos (${Math.round(estimatedPoints)}). Puede tardar.`);
+                if(estimatedPoints > 150000) console.warn(`Generando ~${Math.round(estimatedPoints)} puntos.`);
 
                 for (let y = 0; y < height; y += step) {
                     for (let x = 0; x < width; x += step) {
-                        // Acceso directo a matriz de valores (Optimizado)
-                        const rawValues = georaster.values.map(band => band[y][x]);
                         
-                        // Calculamos centroide geográfico del píxel
                         const centX = xmin + (x * pixelWidth) + (pixelWidth / 2);
                         const centY = ymax - (y * pixelHeight) - (pixelHeight / 2);
-
                         const newF = turf.point([centX, centY]);
-                        const valToAssign = rawValues.length === 1 ? rawValues[0] : rawValues;
+
+                        // Optimización: Leemos SOLO lo necesario de la matriz 'values'
+                        if (mode === 'all') {
+                            georaster.values.forEach((bandGrid, bIdx) => {
+                                const val = bandGrid[y][x];
+                                _assign(newF, val, bIdx);
+                            });
+                        } else {
+                            selectedIndices.forEach(bIdx => {
+                                // Chequeo de seguridad por si el usuario pide banda 99 y hay 3
+                                if (georaster.values[bIdx]) {
+                                    const val = georaster.values[bIdx][y][x];
+                                    _assign(newF, val, bIdx);
+                                }
+                            });
+                        }
                         
-                        _assignValues(newF, valToAssign, prefix);
                         outputFeatures.push(newF);
                         hits++;
                     }
                 }
             }
 
-            if(window.log) window.log(`✅ Finalizado. ${hits} registros procesados.`);
+            if(window.log) window.log(`✅ Finalizado. ${hits} registros.`);
             return turf.featureCollection(outputFeatures);
-
-            // Función auxiliar para asignar valores al properties
-            function _assignValues(feature, raw, pfix) {
-                if (Array.isArray(raw)) {
-                    raw.forEach((val, i) => {
-                        feature.properties[`${pfix}_b${i}`] = (val !== null && !isNaN(val)) ? parseFloat(Number(val).toFixed(4)) : null;
-                    });
-                } else {
-                    feature.properties[`${pfix}`] = (raw !== null && !isNaN(raw)) ? parseFloat(Number(raw).toFixed(4)) : null;
-                }
-            }
         }
     },
     // --- 6. OUTPUTS (WRITERS) ---
