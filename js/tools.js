@@ -93,15 +93,65 @@ reader_osm: {
     reader_http: { cat:'1. READERS', label:'HTTP JSON', icon:'fa-cloud-download-alt', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-u placeholder="URL (GeoJSON)">`, run: async(id,i,d)=>{const r=await fetch(d.querySelector('[df-u]').value); return await r.json();} },
     reader_wkt: { cat:'1. READERS', label:'WKT/Text', icon:'fa-font', color:'#e67e22', in:0, out:1, tpl:()=>`<textarea class="node-control" df-w placeholder="POINT(30 10)"></textarea>`, run: async(id,i,d)=>{const t=d.querySelector('[df-w]').value; const w=wellknown(t); return turf.featureCollection([turf.feature(w)])} },
     reader_bbox_gen: { cat:'1. READERS', label:'BBox Creator', icon:'fa-vector-square', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-b placeholder="minX,minY,maxX,maxY" value="-3.75,40.4,-3.65,40.5">`, run:(id,i,d)=>{const b=d.querySelector('[df-b]').value.split(',').map(Number); return turf.featureCollection([turf.bboxPolygon(b)])} },
+    // reader_geotiff: { 
+    //     cat: '1. READERS', label: 'GeoTIFF Reader', icon: 'fa-layer-group', color: '#e67e22', in: 0, out: 1,
+    //     tpl: (id) => `
+    //         <div style="margin-bottom:4px">
+    //             <span style="font-size:0.7em;color:#aaa">Archivo .tif / .tiff</span>
+    //             <input type="file" df-file class="node-control" accept=".tif,.tiff">
+    //         </div>
+    //         <div style="font-size:0.6em;color:#666">
+    //             Lee la extensión (BBox) y metadatos del Raster.
+    //         </div>`,
+    //     run: async (id, i, d) => {
+    //         const fileInput = d.querySelector('[df-file]');
+    //         if (!fileInput.files || fileInput.files.length === 0) throw new Error("Selecciona un archivo TIFF");
+
+    //         const file = fileInput.files[0];
+    //         const arrayBuffer = await file.arrayBuffer();
+            
+    //         // 1. Leemos el binario con la librería GeoTIFF
+    //         const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+    //         const image = await tiff.getImage(); // Obtiene la primera imagen del directorio
+
+    //         // 2. Extraemos Metadatos básicos
+    //         const width = image.getWidth();
+    //         const height = image.getHeight();
+    //         const samples = image.getSamplesPerPixel(); // Bandas
+    //         const bbox = image.getBoundingBox(); // [minX, minY, maxX, maxY]
+
+    //         // 3. ESTRATEGIA HÍBRIDA:
+    //         // Convertimos la extensión del raster en un Polígono Vectorial (Turf)
+    //         // Esto permite que el flujo siga funcionando con tus herramientas actuales.
+    //         const poly = turf.bboxPolygon(bbox);
+
+    //         // 4. Guardamos los datos "crudos" en las propiedades para uso futuro
+    //         poly.properties = {
+    //             source_file: file.name,
+    //             type: 'raster_bbox',
+    //             width: width,
+    //             height: height,
+    //             bands: samples,
+    //             crs_hint: 'Check original file', // GeoTIFF.js no reproyecta automáticamente
+    //             _raster_ref: true // Bandera para futuros nodos híbridos
+    //         };
+
+    //         if(window.log) window.log(`📷 Raster cargado: ${width}x${height}px (${samples} bandas)`);
+
+    //         return turf.featureCollection([poly]);
+    //     }
+    // },
     reader_geotiff: { 
-        cat: '1. READERS', label: 'GeoTIFF Reader', icon: 'fa-layer-group', color: '#e67e22', in: 0, out: 1,
+        cat: '1. READERS', label: 'GeoTIFF Reader', icon: 'fa-layer-group', color: '#e67e22', 
+        in: 0, 
+        out: 1, // Devuelve: FeatureCollection (BBox) + Datos binarios adjuntos
         tpl: (id) => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Archivo .tif / .tiff</span>
                 <input type="file" df-file class="node-control" accept=".tif,.tiff">
             </div>
             <div style="font-size:0.6em;color:#666">
-                Lee la extensión (BBox) y metadatos del Raster.
+                Lee Raster y pasa datos binarios en memoria.
             </div>`,
         run: async (id, i, d) => {
             const fileInput = d.querySelector('[df-file]');
@@ -110,33 +160,31 @@ reader_osm: {
             const file = fileInput.files[0];
             const arrayBuffer = await file.arrayBuffer();
             
-            // 1. Leemos el binario con la librería GeoTIFF
+            // 1. Leemos metadatos rápidos con GeoTIFF.js
             const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
-            const image = await tiff.getImage(); // Obtiene la primera imagen del directorio
-
-            // 2. Extraemos Metadatos básicos
+            const image = await tiff.getImage(); 
             const width = image.getWidth();
             const height = image.getHeight();
-            const samples = image.getSamplesPerPixel(); // Bandas
-            const bbox = image.getBoundingBox(); // [minX, minY, maxX, maxY]
+            const samples = image.getSamplesPerPixel(); 
+            const bbox = image.getBoundingBox(); 
 
-            // 3. ESTRATEGIA HÍBRIDA:
-            // Convertimos la extensión del raster en un Polígono Vectorial (Turf)
-            // Esto permite que el flujo siga funcionando con tus herramientas actuales.
+            // 2. Creamos el Polígono del BBox (para visualización en mapa)
             const poly = turf.bboxPolygon(bbox);
 
-            // 4. Guardamos los datos "crudos" en las propiedades para uso futuro
+            // 3. ESTRATEGIA DE PASO DE DATOS:
+            // Guardamos el ArrayBuffer crudo en las propiedades.
+            // Nota: Esto funciona en memoria. Si serializas a JSON texto, el buffer se pierde.
             poly.properties = {
                 source_file: file.name,
                 type: 'raster_bbox',
                 width: width,
                 height: height,
                 bands: samples,
-                crs_hint: 'Check original file', // GeoTIFF.js no reproyecta automáticamente
-                _raster_ref: true // Bandera para futuros nodos híbridos
+                _raster_ref: true,
+                _tiff_buffer: arrayBuffer // <--- AQUÍ ESTÁ LA CLAVE
             };
 
-            if(window.log) window.log(`📷 Raster cargado: ${width}x${height}px (${samples} bandas)`);
+            if(window.log) window.log(`📷 Raster cargado en memoria: ${width}x${height}px`);
 
             return turf.featureCollection([poly]);
         }
@@ -1699,88 +1747,204 @@ reader_osm: {
     },
 
     // --- 7. RASTER ---
+    // sp_point_sampling: {
+    //     cat: '4. RASTER', label: 'Multi-Band Sampler', icon: 'fa-layer-group', color: '#8e44ad', in: 1, out: 1,
+    //     tpl: () => `
+    //         <div style="margin-bottom:4px">
+    //             <span style="font-size:0.7em;color:#aaa">Raster Fuente (.tif)</span>
+    //             <input type="file" df-file class="node-control" accept=".tif,.tiff">
+    //         </div>
+    //         <div>
+    //             <span style="font-size:0.7em;color:#aaa">Prefijo Campos Salida</span>
+    //             <input type="text" df-prefix class="node-control" value="value" placeholder="Ej: value">
+    //         </div>
+    //         <div style="font-size:0.6em;color:#888;margin-top:2px">
+    //             Detecta automáticamente todas las bandas y crea: <i>value_band0, value_band1...</i>
+    //         </div>`,
+    //     run: async (id, inputs, dom) => {
+    //         if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de Puntos.");
+    //         const fileInput = dom.querySelector('[df-file]');
+    //         if (!fileInput.files || fileInput.files.length === 0) throw new Error("Carga el archivo Raster.");
+            
+    //         const prefix = dom.querySelector('[df-prefix]').value || 'value';
+    //         const file = fileInput.files[0];
+
+    //         if(window.log) window.log("⏳ Analizando Raster (Extracción Multibanda)...");
+
+    //         const georaster = await geoblaze.parse(file);
+    //         const features = inputs[0].features;
+            
+    //         let hits = 0;
+    //         let misses = 0;
+
+    //         const newFeatures = await Promise.all(features.map(async (f, idx) => {
+    //             const newF = JSON.parse(JSON.stringify(f)); 
+                
+    //             if (turf.getType(newF) === 'Point') {
+    //                 try {
+    //                     const coords = turf.getCoords(newF); 
+                        
+    //                     // Obtenemos los valores crudos. 
+    //                     // Puede ser un número (1 banda) o un Array (N bandas)
+    //                     const raw = await geoblaze.identify(georaster, coords);
+
+    //                     // Lógica de Asignación Dinámica
+    //                     if (Array.isArray(raw)) {
+    //                         // CASO MULTIBANDA: Recorremos el array y creamos campos
+    //                         raw.forEach((val, bandIdx) => {
+    //                             const fieldName = `${prefix}_band${bandIdx}`;
+    //                             newF.properties[fieldName] = (val !== null && !isNaN(val)) 
+    //                                 ? parseFloat(Number(val).toFixed(4)) 
+    //                                 : null;
+    //                         });
+    //                         hits++;
+    //                     } else if (typeof raw === 'number') {
+    //                         // CASO MONOBANDA
+    //                         const fieldName = `${prefix}_band0`;
+    //                         newF.properties[fieldName] = parseFloat(Number(raw).toFixed(4));
+    //                         hits++;
+    //                     } else {
+    //                         // CASO ERROR / SIN DATOS (NoData)
+    //                         // Creamos al menos la banda 0 con null para mantener consistencia
+    //                         newF.properties[`${prefix}_band0`] = null;
+    //                         misses++;
+    //                     }
+
+    //                     // Diagnóstico solo del primer punto para verificar
+    //                     if (idx === 0) {
+    //                         console.log("🔍 DIAGNÓSTICO MULTIBANDA:", {
+    //                             result_type: Array.isArray(raw) ? `Array (${raw.length} bandas)` : typeof raw,
+    //                             raw_values: raw
+    //                         });
+    //                     }
+
+    //                 } catch (err) {
+    //                     newF.properties[`${prefix}_err`] = "Exception";
+    //                     console.error(err);
+    //                     misses++;
+    //                 }
+    //             }
+    //             return newF;
+    //         }));
+
+    //         if(window.log) window.log(`✅ Sampling completo. Hits: ${hits}, Misses: ${misses}.`);
+    //         return turf.featureCollection(newFeatures);
+    //     }
+    // },
     sp_point_sampling: {
-        cat: '4. RASTER', label: 'Multi-Band Sampler', icon: 'fa-layer-group', color: '#8e44ad', in: 1, out: 1,
+        cat: '4. RASTER', label: 'Multi-Band Sampler', icon: 'fa-crosshairs', color: '#8e44ad', 
+        in: 2, // In 0: Puntos (Opcional), In 1: Raster (Obligatorio)
+        out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
-                <span style="font-size:0.7em;color:#aaa">Raster Fuente (.tif)</span>
-                <input type="file" df-file class="node-control" accept=".tif,.tiff">
+                <span style="font-size:0.7em;color:#aaa">Prefijo Salida</span>
+                <input type="text" df-prefix class="node-control" value="val" placeholder="Ej: val">
             </div>
             <div>
-                <span style="font-size:0.7em;color:#aaa">Prefijo Campos Salida</span>
-                <input type="text" df-prefix class="node-control" value="value" placeholder="Ej: value">
+                <span style="font-size:0.7em;color:#aaa">Grid Step (Solo si no hay puntos)</span>
+                <input type="number" df-step class="node-control" value="1" min="1" title="1 = Todos los pixeles. 10 = 1 de cada 10">
             </div>
-            <div style="font-size:0.6em;color:#888;margin-top:2px">
-                Detecta automáticamente todas las bandas y crea: <i>value_band0, value_band1...</i>
+            <div style="font-size:0.6em;color:#888;margin-top:4px">
+                <b>Conectado:</b> Muestrea tus puntos.<br>
+                <b>Desconectado:</b> Crea puntos del Raster.
             </div>`,
         run: async (id, inputs, dom) => {
-            if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de Puntos.");
-            const fileInput = dom.querySelector('[df-file]');
-            if (!fileInput.files || fileInput.files.length === 0) throw new Error("Carga el archivo Raster.");
-            
-            const prefix = dom.querySelector('[df-prefix]').value || 'value';
-            const file = fileInput.files[0];
+            // 1. Validar Raster (Input 1 es OBLIGATORIO)
+            if (!inputs[1] || !inputs[1].features || inputs[1].features.length === 0) 
+                throw new Error("❌ Conecta el GeoTIFF Reader en la entrada 1.");
 
-            if(window.log) window.log("⏳ Analizando Raster (Extracción Multibanda)...");
+            // Recuperar Buffer desde memoria (pasado por el Reader anterior)
+            const rasterFeature = inputs[1].features[0];
+            const buffer = rasterFeature.properties._tiff_buffer;
+            if (!buffer) throw new Error("❌ El nodo Raster no contiene datos binarios.");
 
-            const georaster = await geoblaze.parse(file);
-            const features = inputs[0].features;
-            
+            const prefix = dom.querySelector('[df-prefix]').value || 'val';
+            const step = parseInt(dom.querySelector('[df-step]').value) || 1;
+
+            if(window.log) window.log("⏳ Procesando Raster...");
+
+            const georaster = await geoblaze.parse(buffer);
+            let outputFeatures = [];
             let hits = 0;
-            let misses = 0;
 
-            const newFeatures = await Promise.all(features.map(async (f, idx) => {
-                const newF = JSON.parse(JSON.stringify(f)); 
+            // ==========================================
+            // MODO 1: MUESTREO DE PUNTOS (Si hay Input 0)
+            // ==========================================
+            if (inputs[0] && inputs[0].features && inputs[0].features.length > 0) {
+                const features = inputs[0].features;
+                if(window.log) window.log(`📍 Modo: Muestreo de ${features.length} puntos externos.`);
+
+                outputFeatures = await Promise.all(features.map(async (f) => {
+                    const newF = JSON.parse(JSON.stringify(f));
+                    if (turf.getType(newF) === 'Point') {
+                        try {
+                            const coords = turf.getCoords(newF);
+                            const raw = await geoblaze.identify(georaster, coords);
+                            _assignValues(newF, raw, prefix);
+                            hits++;
+                        } catch (e) { /* Fuera de rango */ }
+                    }
+                    return newF;
+                }));
+            } 
+            // ==========================================
+            // MODO 2: GENERACIÓN DE GRID (Si NO hay Input 0)
+            // ==========================================
+            else {
+                const width = georaster.width;
+                const height = georaster.height;
+                const pixelW = georaster.pixelWidth;
+                const pixelH = georaster.pixelHeight;
+                const minX = georaster.xmin;
+                const maxY = georaster.ymax;
                 
-                if (turf.getType(newF) === 'Point') {
-                    try {
-                        const coords = turf.getCoords(newF); 
+                // Estimación de seguridad
+                const totalPoints = Math.floor((width/step) * (height/step));
+                if(window.log) window.log(`▦ Modo: Grid Automático. Generando ~${totalPoints} puntos...`);
+                if (totalPoints > 200000) console.warn("⚠️ Cuidado: Generar +200k puntos puede ralentizar el navegador.");
+
+                // Iteramos píxeles (Optimizamos usando acceso directo al array 'values' en vez de 'identify')
+                // Geoblaze guarda valores en: georaster.values[band][y][x]
+                for (let y = 0; y < height; y += step) {
+                    for (let x = 0; x < width; x += step) {
                         
-                        // Obtenemos los valores crudos. 
-                        // Puede ser un número (1 banda) o un Array (N bandas)
-                        const raw = await geoblaze.identify(georaster, coords);
+                        // 1. Calcular Centroide del Píxel
+                        // Nota: GeoTIFF coordenadas suelen ser esquina superior izquierda. 
+                        // Centro X = minX + (x * w) + (w/2)
+                        // Centro Y = maxY - (y * h) - (h/2)  (Asumiendo pixelHeight positivo en metadatos estándar)
+                        const centX = minX + (x * pixelW) + (pixelW / 2);
+                        const centY = maxY - (y * pixelH) - (pixelH / 2);
 
-                        // Lógica de Asignación Dinámica
-                        if (Array.isArray(raw)) {
-                            // CASO MULTIBANDA: Recorremos el array y creamos campos
-                            raw.forEach((val, bandIdx) => {
-                                const fieldName = `${prefix}_band${bandIdx}`;
-                                newF.properties[fieldName] = (val !== null && !isNaN(val)) 
-                                    ? parseFloat(Number(val).toFixed(4)) 
-                                    : null;
-                            });
-                            hits++;
-                        } else if (typeof raw === 'number') {
-                            // CASO MONOBANDA
-                            const fieldName = `${prefix}_band0`;
-                            newF.properties[fieldName] = parseFloat(Number(raw).toFixed(4));
-                            hits++;
-                        } else {
-                            // CASO ERROR / SIN DATOS (NoData)
-                            // Creamos al menos la banda 0 con null para mantener consistencia
-                            newF.properties[`${prefix}_band0`] = null;
-                            misses++;
-                        }
+                        // 2. Extraer valor directamente (Mucho más rápido que identify espacial)
+                        const rawValues = georaster.values.map(band => band[y][x]);
 
-                        // Diagnóstico solo del primer punto para verificar
-                        if (idx === 0) {
-                            console.log("🔍 DIAGNÓSTICO MULTIBANDA:", {
-                                result_type: Array.isArray(raw) ? `Array (${raw.length} bandas)` : typeof raw,
-                                raw_values: raw
-                            });
-                        }
-
-                    } catch (err) {
-                        newF.properties[`${prefix}_err`] = "Exception";
-                        console.error(err);
-                        misses++;
+                        // 3. Crear Feature
+                        const newF = turf.point([centX, centY]);
+                        
+                        // 4. Asignar valores
+                        // Si solo hay 1 banda, pasamos el valor, si hay más, el array.
+                        const valToAssign = rawValues.length === 1 ? rawValues[0] : rawValues;
+                        _assignValues(newF, valToAssign, prefix);
+                        
+                        outputFeatures.push(newF);
+                        hits++;
                     }
                 }
-                return newF;
-            }));
+            }
 
-            if(window.log) window.log(`✅ Sampling completo. Hits: ${hits}, Misses: ${misses}.`);
-            return turf.featureCollection(newFeatures);
+            if(window.log) window.log(`✅ Finalizado. ${hits} puntos procesados.`);
+            return turf.featureCollection(outputFeatures);
+
+            // --- Función auxiliar de asignación ---
+            function _assignValues(feature, raw, pfix) {
+                if (Array.isArray(raw)) {
+                    raw.forEach((val, i) => {
+                        feature.properties[`${pfix}_b${i}`] = (val !== null && !isNaN(val)) ? parseFloat(Number(val).toFixed(4)) : null;
+                    });
+                } else {
+                    feature.properties[`${pfix}`] = (raw !== null && !isNaN(raw)) ? parseFloat(Number(raw).toFixed(4)) : null;
+                }
+            }
         }
     },
     // --- 6. OUTPUTS (WRITERS) ---
