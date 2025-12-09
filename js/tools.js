@@ -1756,80 +1756,58 @@ reader_osm: {
             return output;
         }
     },
-    util_sampler: { 
-        cat: '3. UTILS', label: 'Random Sampler', icon: 'fa-dice', color: '#7f8c8d', in: 1, out: 1,
-        tpl: () => `
-            <div style="margin-bottom:4px">
-                <span style="font-size:0.7em;color:#aaa">Estrategia de Muestreo</span>
-                <select df-mode class="node-control">
-                    <option value="random">Aleatorio (N Total)</option>
-                    <option value="interval">Intervalo (Cada N)</option>
-                    <option value="first">Primeros N (Head)</option>
-                    <option value="last">Últimos N (Tail)</option>
-                </select>
-            </div>
-            <div>
-                <span style="font-size:0.7em;color:#aaa">Valor (N)</span>
-                <input type="number" df-n class="node-control" value="10" min="1">
-            </div>`,
-        run: async (id, inputs, dom) => {
-            if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de Puntos.");
-            const fileInput = dom.querySelector('[df-file]');
-            if (!fileInput.files || fileInput.files.length === 0) throw new Error("Carga el archivo Raster.");
-            
-            const fieldName = dom.querySelector('[df-field]').value || 'value';
-            const file = fileInput.files[0];
+util_sampler: { 
+    cat: '3. UTILS', label: 'Random Sampler', icon: 'fa-dice', color: '#7f8c8d', 
+    in: 1, out: 1,
+    tpl: () => `
+        <div style="margin-bottom:4px">
+            <span style="font-size:0.7em;color:#aaa">Estrategia de Muestreo</span>
+            <select df-mode class="node-control">
+                <option value="random">Aleatorio (N Total)</option>
+                <option value="interval">Intervalo (Cada N)</option>
+                <option value="first">Primeros N (Head)</option>
+                <option value="last">Últimos N (Tail)</option>
+            </select>
+        </div>
+        <div>
+            <span style="font-size:0.7em;color:#aaa">Valor (N)</span>
+            <input type="number" df-n class="node-control" value="10" min="1">
+        </div>`,
+    run: async (id, inputs, dom) => {
+        // 1. Validación de entrada vectorial
+        if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de entrada.");
+        
+        const features = inputs[0].features;
+        const mode = dom.querySelector('[df-mode]').value;
+        const n = parseInt(dom.querySelector('[df-n]').value) || 10;
+        
+        let result = [];
 
-            if(window.log) window.log("⏳ Analizando píxeles...");
-
-            const georaster = await geoblaze.parse(file);
-            const features = inputs[0].features;
-            
-            // Debug: Ver en la consola del navegador qué está devolviendo exactamente
-            console.log("Metadatos Raster:", georaster);
-
-            const newFeatures = features.map((f, idx) => {
-                const newF = JSON.parse(JSON.stringify(f)); 
-                
-                if (turf.getType(newF) === 'Point') {
-                    try {
-                        const coords = turf.getCoords(newF);
-                        const result = geoblaze.identify(georaster, coords);
-
-                        // Lógica mejorada de extracción
-                        let val = null;
-
-                        // Caso 1: Es un Array (lo más normal) -> [255]
-                        if (Array.isArray(result) || (result && result.length !== undefined)) {
-                            val = result[0]; 
-                        } 
-                        // Caso 2: Es un número directo
-                        else if (typeof result === 'number') {
-                            val = result;
-                        }
-
-                        // Limpieza final y redondeo
-                        if (val !== null && val !== undefined && !isNaN(val)) {
-                            // Si es decimal largo, lo cortamos a 4 decimales
-                            if (typeof val === 'number') val = parseFloat(val.toFixed(4));
-                            newF.properties[fieldName] = val;
-                        } else {
-                            newF.properties[fieldName] = "NoData"; // O null
-                        }
-                        
-                        // Debug solo del primer punto para no saturar
-                        if(idx === 0) console.log("Muestra punto 0:", result, " -> ", val);
-
-                    } catch (err) {
-                        newF.properties[fieldName] = null;
-                    }
-                }
-                return newF;
-            });
-            
-            return turf.featureCollection(newFeatures);
+        // 2. Lógica de Muestreo según la estrategia seleccionada
+        if (mode === 'random') {
+            // Clonamos y desordenamos aleatoriamente
+            const shuffled = [...features].sort(() => 0.5 - Math.random());
+            result = shuffled.slice(0, n);
+        } 
+        else if (mode === 'interval') {
+            // Filtramos uno de cada N elementos
+            result = features.filter((f, i) => (i + 1) % n === 0);
+        } 
+        else if (mode === 'first') {
+            // Los primeros N
+            result = features.slice(0, n);
+        } 
+        else if (mode === 'last') {
+            // Los últimos N
+            // Nota: slice con negativo toma desde el final
+            result = features.slice(-n);
         }
-    },
+
+        if(window.log) window.log(`🎲 Sampler: ${mode} -> ${result.length} elementos seleccionados.`);
+
+        return turf.featureCollection(result);
+    }
+},
 
     // --- 7. RASTER ---
     // sp_point_sampling: {
