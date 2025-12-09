@@ -1721,7 +1721,7 @@ reader_osm: {
             const fieldName = dom.querySelector('[df-field]').value || 'value';
             const file = fileInput.files[0];
 
-            if(window.log) window.log("⏳ Analizando Raster con modo recursivo...");
+            if(window.log) window.log("⏳ Analizando Raster (Modo Fuerza Bruta)...");
 
             const georaster = await geoblaze.parse(file);
             const features = inputs[0].features;
@@ -1729,13 +1729,20 @@ reader_osm: {
             let hits = 0;
             let misses = 0;
 
-            // Función Recursiva para extraer el primer número válido
+            // Función Recursiva Mejorada: Ahora sabe leer Objetos {0: val} y Arrays
             const getPixelValue = (v) => {
                 if (v === null || v === undefined) return null;
+                // 1. Es número directo
                 if (typeof v === 'number') return v;
-                // Si es Array o TypedArray (Float32Array, etc), miramos dentro
-                if (v.length && v.length > 0) {
-                    return getPixelValue(v[0]); // Recursión: profundiza en el primer elemento
+                // 2. Es Array o TypedArray
+                if (Array.isArray(v) || (v.length !== undefined && typeof v !== 'string')) {
+                    if (v.length === 0) return null;
+                    return getPixelValue(v[0]); 
+                }
+                // 3. Es Objeto (ej: {band_0: 255} o {0: 255})
+                if (typeof v === 'object') {
+                    const vals = Object.values(v);
+                    if (vals.length > 0) return getPixelValue(vals[0]);
                 }
                 return null;
             };
@@ -1745,43 +1752,52 @@ reader_osm: {
                 
                 if (turf.getType(newF) === 'Point') {
                     try {
-                        const coords = turf.getCoords(newF);
+                        const coords = turf.getCoords(newF); // [lon, lat]
+                        
+                        // NOTA CRÍTICA: geoblaze espera [lon, lat]. Si el tif está en UTM, fallará.
                         const raw = geoblaze.identify(georaster, coords);
 
-                        // Intentamos extraer el número
+                        // --- ZONA DE DIAGNÓSTICO ---
+                        // Solo imprimimos el primer intento para ver qué demonios devuelve
+                        if (idx === 0) {
+                            console.log("🔍 DIAGNÓSTICO PUNTO 0:", {
+                                coords: coords,
+                                raster_bbox: {
+                                    minX: georaster.xmin, 
+                                    minY: georaster.ymin, 
+                                    maxX: georaster.xmax, 
+                                    maxY: georaster.ymax
+                                },
+                                raw_result: raw
+                            });
+                        }
+                        // ----------------------------
+
                         let val = getPixelValue(raw);
 
                         if (val !== null && !isNaN(val)) {
-                            // ÉXITO: Tenemos un número
                             newF.properties[fieldName] = parseFloat(Number(val).toFixed(4));
                             hits++;
                         } else {
-                            // FALLO: No es número o es nulo.
-                            misses++;
+                            // Si falla, guardamos qué tipo de dato era para depurar
+                            const typeStr = raw === null ? 'null' : (Array.isArray(raw) ? 'Array' : typeof raw);
+                            // Intentamos stringify de nuevo, si es objeto vacío {} lo marcamos
+                            let content = "";
+                            try { content = JSON.stringify(raw); } catch(e){}
                             
-                            // DEBUG VISUAL: Si hay datos crudos pero no pudimos sacar número,
-                            // lo guardamos como texto para que NO salga [Obj] y veas qué es.
-                            if (raw !== null && raw !== undefined) {
-                                try {
-                                    // Array.from convierte TypedArrays a arrays normales leibles
-                                    const debugStr = JSON.stringify(raw.length ? Array.from(raw) : raw);
-                                    newF.properties[fieldName] = "RAW: " + debugStr;
-                                } catch(e) {
-                                    newF.properties[fieldName] = "Error_Format";
-                                }
-                            } else {
-                                newF.properties[fieldName] = null; // "NoData" real
-                            }
+                            newF.properties[fieldName] = `ERR: ${typeStr} ${content}`;
+                            misses++;
                         }
                     } catch (err) {
-                        newF.properties[fieldName] = "Error_Calc";
+                        newF.properties[fieldName] = "ERR: Exception";
+                        console.error(err);
                         misses++;
                     }
                 }
                 return newF;
             });
 
-            if(window.log) window.log(`✅ Sampling completo. Hits: ${hits}, Misses: ${misses}`);
+            if(window.log) window.log(`✅ Sampling completo. Hits: ${hits}, Misses: ${misses}. Revisa la Consola (F12) si hay errores.`);
             return turf.featureCollection(newFeatures);
         }
     },
