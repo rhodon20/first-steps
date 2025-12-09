@@ -7,12 +7,12 @@
             let meta = executionData[id];
             if(!meta || !meta.data) { showToast("Nodo sin datos procesados", "error"); return; }
             
-            // Normalización de datos
+            // 1. Normalización de datos (Output único o múltiple)
             let data = meta.data;
-            if(!data.type) data = data.output_1 || data.output_2 || data.output_3; // Soporte para nodos multi-salida
+            if(!data.type) data = data.output_1 || data.output_2 || data.output_3; 
             if(!data || !data.features || data.features.length === 0) { showToast("Geometría vacía", "warn"); return; }
 
-            // Limpieza de capa previa del mismo nodo
+            // 2. Limpieza de capa previa
             if(mapLayers[id]) { 
                 map.removeLayer(mapLayers[id]); 
                 layerControl.removeLayer(mapLayers[id]);
@@ -22,13 +22,16 @@
             const nodeName = editor.getNodeFromId(id).name;
             const tool = TOOL_REGISTRY[nodeName];
             
-            // --- LOGICA DE ESTILOS (Soporte Inspector) ---
-            // 1. Buscamos si hay un estilo forzado en el root del objeto (puesto por el Inspector)
+            // =========================================================
+            // LÓGICA DE ESTILOS (Soporte Inspector + Default)
+            // =========================================================
+            // A. Buscamos si hay un estilo forzado por el Inspector en el objeto root
             const customStyle = data._custom_style || null;
             
-            // 2. Definimos el color base (Custom o Default del Tool)
+            // B. Definimos el color base (Si hay custom usa ese, si no el del Tool)
             const baseColor = (customStyle && customStyle.color) ? customStyle.color : (tool.color || '#3388ff');
             
+            // Etiqueta en el control de capas
             const layerName = `<span style="color:${baseColor}">■</span> ${tool.label} (#${id})`;
 
             try {
@@ -38,10 +41,10 @@
                         // Prioridad 1: Estilo global del Inspector
                         if (customStyle) return customStyle;
                         
-                        // Prioridad 2: Estilo específico de la feature
+                        // Prioridad 2: Estilo específico de la feature (interno)
                         if (feature.properties && feature.properties._custom_style) return feature.properties._custom_style;
 
-                        // Prioridad 3: Defecto
+                        // Prioridad 3: Defecto (Color del Tool)
                         return { 
                             color: baseColor, 
                             weight: 2, 
@@ -52,8 +55,8 @@
                     },
                     // Estilo para Puntos
                     pointToLayer: (feature, latlng) => {
-                        // Chequeo de color específico por punto
                         let c = baseColor;
+                        // Chequeo de color específico por punto
                         if(feature.properties && feature.properties.marker_color) c = feature.properties.marker_color;
                         
                         return L.circleMarker(latlng, { 
@@ -83,7 +86,7 @@
                 layerControl.addOverlay(layer, layerName);
                 mapLayers[id] = layer;
                 
-                // Zoom automático a la capa
+                // Zoom automático
                 const bounds = layer.getBounds();
                 if(bounds.isValid()) map.fitBounds(bounds, {padding:[50,50], maxZoom: 16});
                 
@@ -100,26 +103,26 @@
             const container = document.getElementById('table-container');
             container.innerHTML = '';
             
-            // Normalización
             if(!data.type) data = data.output_1 || data.output_2 || data.output_3;
             if(!data || !data.features || data.features.length === 0) { 
-                container.innerHTML = '<div style="padding:20px;text-align:center;color:#aaa">Sin datos para visualizar.</div>'; 
+                container.innerHTML = '<div style="padding:20px;text-align:center;color:#aaa">Sin datos.</div>'; 
                 return; 
             }
 
-            // Detectar headers (usamos la primera feature válida)
-            const firstProps = data.features[0].properties || {};
-            const headers = Object.keys(firstProps).filter(k => !k.startsWith('_')); // Filtramos internos
+            const features = data.features;
+            const firstProps = features[0].properties || {};
+            // Filtrar propiedades internas que empiezan por "_"
+            const headers = Object.keys(firstProps).filter(k => !k.startsWith('_')); 
             
             let html = '<table class="attr-table"><thead><tr><th>#</th>';
             headers.forEach(h => html += `<th>${h}</th>`);
             html += '</tr></thead><tbody>';
             
-            const limit = Math.min(data.features.length, 100); // Límite 100 para rendimiento
+            const limit = Math.min(features.length, 200); 
             
             for(let i=0; i<limit; i++) {
                 html += `<tr><td>${i+1}</td>`;
-                const props = data.features[i].properties || {};
+                const props = features[i].properties || {};
                 headers.forEach(h => {
                     let val = props[h];
                     if(val === undefined || val === null) val = '';
@@ -132,15 +135,15 @@
             }
             html += '</tbody></table>';
             
-            if(data.features.length > limit) {
+            if(features.length > limit) {
                 html += `<div style="padding:8px;text-align:center;font-size:0.8em;color:#888;background:#1e1e1e">
-                            ⚠️ Mostrando primeros ${limit} de ${data.features.length} registros. Descarga CSV para ver todo.
+                            Visualizando ${limit} de ${features.length} registros. Descarga CSV para ver todo.
                          </div>`;
             }
             container.innerHTML = html;
         }
 
-        // Actualizar badges (Semáforo de estado)
+        // Función para actualizar los badges (RESTAURADA LÓGICA ORIGINAL)
         function updateBadges() {
             Object.keys(executionData).forEach(id => {
                 const meta = executionData[id];
@@ -148,19 +151,22 @@
                 if(!badge) return;
 
                 let count = 0;
-                // Intentamos adivinar la estructura
-                if(meta.data && meta.data.features) count = meta.data.features.length;
-                else if(meta.data && meta.data.output_1) count = meta.data.output_1.features.length;
-
-                badge.innerText = count > 1000 ? (count/1000).toFixed(1)+'k' : count;
-                badge.style.display = 'flex';
+                const d = meta.data;
+                // Cálculo robusto de features
+                if(d && d.features) count = d.features.length;
+                else if(d && d.output_1) count = d.output_1.features.length + (d.output_2?.features.length||0);
                 
-                // Lógica de color (Verde = Reciente, Naranja = Antiguo)
-                badge.className = 'count-badge'; 
-                if (meta.timestamp && currentRunTimestamp && meta.timestamp >= currentRunTimestamp) {
-                    badge.classList.add('badge-green');
+                badge.innerText = count > 1000 ? (count/1000).toFixed(1)+'k' : count;
+                badge.style.display = 'inline-block';
+                
+                // Lógica Semáforo (Original)
+                badge.className = 'count-badge'; // reset
+                
+                // Comparamos el ID de ejecución del nodo con el ID de ejecución global actual
+                if (meta._runId === currentRunTimestamp) {
+                    badge.classList.add('badge-green'); // Calculado en ESTA ejecución
                 } else {
-                    badge.classList.add('badge-orange');
+                    badge.classList.add('badge-orange'); // Calculado en una ejecución ANTERIOR
                 }
             });
         }
@@ -183,7 +189,6 @@
         }
 
         function switchTab(t) {
-            // Gestión de clases active en botones
             const evt = arguments[1] || window.event;
             document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
             if(evt && evt.target) {
@@ -191,7 +196,6 @@
                 if(btn) btn.classList.add('active');
             }
 
-            // Gestión de visibilidad de paneles
             ['map','logs','table-container'].forEach(x => { 
                 const el = document.getElementById(x); 
                 if(el) el.style.display='none'; 
@@ -201,7 +205,6 @@
             const toShow = document.getElementById(showId);
             if(toShow) toShow.style.display = 'block';
 
-            // Auto-expandir panel si está cerrado
             const p = document.getElementById('bottom-panel');
             if(p.offsetHeight < 100) togglePanelHeight();
 
@@ -230,26 +233,22 @@
             setTimeout(()=>t.className='', 3000); 
         }
         
-        // Carga de Archivos Local (Para nodos File Reader)
-        // NOTA: Para el GeoTIFF Reader, la lógica va dentro del nodo run(), no aquí.
         async function loadFile(input, id) {
             const file = input.files[0];
             if (!file) return;
-            const lbl = document.getElementById('lbl-' + id); // Asegúrate de tener un <span id="lbl-NODEID"> en tu tpl
+            const lbl = document.getElementById('lbl-' + id);
             if(lbl) lbl.innerText = "Leyendo...";
             
             try {
-                // Truco para el GeoTIFF: Si es .tif, solo notificamos visualmente, 
-                // el nodo run() se encargará de leer el binario.
+                // Excepción para GeoTIFF: Solo UI, el worker del nodo lo lee.
                 if(file.name.match(/\.tif|\.tiff$/i)) {
                     if(lbl) {
                         lbl.innerText = `${file.name}`;
                         lbl.style.color = "#2ecc71";
                     }
-                    return; // Salimos, no parseamos geojson aquí
+                    return; 
                 }
 
-                // Para Vectoriales normales (GeoJSON, KML, GPKG...)
                 let geojson = null;
                 const buffer = await file.arrayBuffer();
                 
@@ -263,14 +262,10 @@
                     const text = new TextDecoder("utf-8").decode(buffer);
                     geojson = toGeoJSON.kml(new DOMParser().parseFromString(text,'text/xml'));
                 }
-                // ... añadir más parsers si es necesario (GPKG, Parquet) ...
                 
                 if(!geojson) throw new Error("Formato no soportado en vista previa");
 
                 geojson = ensureFC(geojson);
-                
-                // Guardamos en el input oculto para que el nodo run() lo recoja
-                // Asegúrate que tu nodo tiene: <input type="hidden" df-data id="d-NODEID">
                 const hiddenInput = document.getElementById('d-' + id);
                 if(hiddenInput) hiddenInput.value = JSON.stringify(geojson);
 
@@ -282,13 +277,12 @@
             } catch (e) {
                 console.warn(e);
                 if(lbl) {
-                    lbl.innerText = "Error / Pendiente"; // Algunos formatos complejos fallan en preview
+                    lbl.innerText = "Error/Pendiente";
                     lbl.style.color = "#e67e22";
                 }
             }
         }
 
-        // Helpers de Descarga
         function download(c,n,t){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:t})); a.download=n; a.click(); }
         
         function toCSV(g){ 
@@ -297,7 +291,6 @@
             g.features.forEach(f=>Object.keys(f.properties||{}).forEach(k=> !k.startsWith('_') && props.add(k)));
             const h=Array.from(props);
             
-            // CSV Scaping
             const escape = v => {
                 if(v === null || v === undefined) return '';
                 let s = String(v);
@@ -311,19 +304,15 @@
         }
 
         function clearCanvas(){ 
-            if(!confirm("¿Borrar todo el flujo? Se perderán los datos no guardados.")) return;
+            if(!confirm("¿Borrar todo?")) return;
             editor.clear(); 
             SafeStorage.clear('jetl_flow_optimized'); 
-            
-            // Limpiar Mapa
             Object.values(mapLayers).forEach(l => { map.removeLayer(l); layerControl.removeLayer(l); });
             mapLayers = {}; 
             executionData = {};
-            
-            log("Canvas reseteado.", "warn");
+            log("Canvas limpio.", "warn");
         }
 
-        // Helper pequeño para asegurar FeatureCollection
         function ensureFC(geo) {
             if (!geo) return turf.featureCollection([]);
             if (geo.type === 'FeatureCollection') return geo;
