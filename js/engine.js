@@ -1,6 +1,4 @@
-
-
-        // =============================================
+// =============================================
         // 3. ENGINE & EVENTS
         // =============================================
         let editor, map, mapLayers={}, executionData={};
@@ -57,6 +55,27 @@ const durationMs = Date.now() - startMs;self.postMessage({taskId:msg.taskId,stat
         }
 
         window.onload = function() {
+            // =========================================================
+            // FIX: PARCHE PARA EVITAR InvalidStateError EN INPUT FILE
+            // =========================================================
+            // Esto intercepta el error cuando Drawflow intenta restaurar un nombre de archivo
+            try {
+                const originalValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                Object.defineProperty(HTMLInputElement.prototype, 'value', {
+                    set: function(val) {
+                        if (this.type === 'file') {
+                            // Si intentan poner un valor distinto a vacío en un input file, lo ignoramos
+                            if (val !== "") {
+                                // console.warn(`[Engine Fix] Bloqueada asignación insegura a input file: ${val}`);
+                                return; 
+                            }
+                        }
+                        originalValueSetter.call(this, val);
+                    }
+                });
+            } catch(e) { console.warn("No se pudo aplicar el parche de input file", e); }
+            // =========================================================
+
             // MAPA
             map = L.map('map', { renderer: L.canvas() }).setView([40.416, -3.703], 6);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM contributors' }).addTo(map);
@@ -70,7 +89,15 @@ const durationMs = Date.now() - startMs;self.postMessage({taskId:msg.taskId,stat
 
             // Auto-Save / Restore
             const saved = SafeStorage.load('jetl_flow_optimized');
-            if(saved) try { editor.import(JSON.parse(saved)); } catch(e){ console.error(e); }
+            if(saved) {
+                try { 
+                    editor.import(JSON.parse(saved)); 
+                } catch(e) { 
+                    console.error("Error importando flujo guardado:", e); 
+                    // Si falla la carga, podríamos limpiar para evitar estado corrupto
+                    // editor.clear(); 
+                }
+            }
 
             ['nodeCreated','nodeRemoved','connectionCreated','connectionRemoved'].forEach(ev => {
                 editor.on(ev, ()=>SafeStorage.save('jetl_flow_optimized', JSON.stringify(editor.export())));

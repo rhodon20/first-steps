@@ -1723,23 +1723,20 @@ reader_osm: {
 
             if(window.log) window.log("⏳ Analizando Raster (Modo Fuerza Bruta)...");
 
+            // 1. Cargamos el raster (esto ya estaba bien con await)
             const georaster = await geoblaze.parse(file);
             const features = inputs[0].features;
             
             let hits = 0;
             let misses = 0;
 
-            // Función Recursiva Mejorada: Ahora sabe leer Objetos {0: val} y Arrays
             const getPixelValue = (v) => {
                 if (v === null || v === undefined) return null;
-                // 1. Es número directo
                 if (typeof v === 'number') return v;
-                // 2. Es Array o TypedArray
                 if (Array.isArray(v) || (v.length !== undefined && typeof v !== 'string')) {
                     if (v.length === 0) return null;
                     return getPixelValue(v[0]); 
                 }
-                // 3. Es Objeto (ej: {band_0: 255} o {0: 255})
                 if (typeof v === 'object') {
                     const vals = Object.values(v);
                     if (vals.length > 0) return getPixelValue(vals[0]);
@@ -1747,28 +1744,27 @@ reader_osm: {
                 return null;
             };
 
-            const newFeatures = features.map((f, idx) => {
+            // 2. CORRECCIÓN PRINCIPAL: Usamos Promise.all + map async
+            // Esto permite esperar a que geoblaze termine de leer cada punto antes de continuar
+            const newFeatures = await Promise.all(features.map(async (f, idx) => {
                 const newF = JSON.parse(JSON.stringify(f)); 
                 
                 if (turf.getType(newF) === 'Point') {
                     try {
-                        const coords = turf.getCoords(newF); // [lon, lat]
+                        const coords = turf.getCoords(newF); 
                         
-                        // NOTA CRÍTICA: geoblaze espera [lon, lat]. Si el tif está en UTM, fallará.
-                        const raw = geoblaze.identify(georaster, coords);
+                        // AÑADIDO: 'await' aquí es crucial. Antes devolvía una Promesa, ahora devuelve el valor.
+                        const raw = await geoblaze.identify(georaster, coords);
 
                         // --- ZONA DE DIAGNÓSTICO ---
-                        // Solo imprimimos el primer intento para ver qué demonios devuelve
                         if (idx === 0) {
                             console.log("🔍 DIAGNÓSTICO PUNTO 0:", {
                                 coords: coords,
-                                raster_bbox: {
-                                    minX: georaster.xmin, 
-                                    minY: georaster.ymin, 
-                                    maxX: georaster.xmax, 
-                                    maxY: georaster.ymax
+                                raster_bbox: { 
+                                    minX: georaster.xmin, minY: georaster.ymin, 
+                                    maxX: georaster.xmax, maxY: georaster.ymax 
                                 },
-                                raw_result: raw
+                                raw_result: raw // Ahora verás el número o array real, no "Promise"
                             });
                         }
                         // ----------------------------
@@ -1779,12 +1775,9 @@ reader_osm: {
                             newF.properties[fieldName] = parseFloat(Number(val).toFixed(4));
                             hits++;
                         } else {
-                            // Si falla, guardamos qué tipo de dato era para depurar
                             const typeStr = raw === null ? 'null' : (Array.isArray(raw) ? 'Array' : typeof raw);
-                            // Intentamos stringify de nuevo, si es objeto vacío {} lo marcamos
                             let content = "";
                             try { content = JSON.stringify(raw); } catch(e){}
-                            
                             newF.properties[fieldName] = `ERR: ${typeStr} ${content}`;
                             misses++;
                         }
@@ -1795,9 +1788,9 @@ reader_osm: {
                     }
                 }
                 return newF;
-            });
+            }));
 
-            if(window.log) window.log(`✅ Sampling completo. Hits: ${hits}, Misses: ${misses}. Revisa la Consola (F12) si hay errores.`);
+            if(window.log) window.log(`✅ Sampling completo. Hits: ${hits}, Misses: ${misses}.`);
             return turf.featureCollection(newFeatures);
         }
     },
