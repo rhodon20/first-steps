@@ -88,9 +88,9 @@ No hay npm install. No hay pip install.
 
   - Conecta la salida del Reader a la entrada del Buffer.
 
-  - Pulsa el botón RUN (verde) en la barra superior.
+  - Ejecuta.
 
-  - Inspecciona: Haz clic en el nodo procesado para ver la tabla de datos y pulsa "Ver en Mapa".
+  - Inspecciona: Haz clic en el nodo procesado para ver la tabla de datos.
 
 Tecnologías Utilizadas
 Este proyecto es posible gracias a estas increíbles librerías Open Source:
@@ -114,14 +114,4 @@ Estado del Proyecto y Limitaciones
 
 - Persistencia: Los datos cargados (archivos) no se guardan entre sesiones, solo la estructura del flujo (nodos y conexiones).
 
-Contribuciones
 
-¡Las contribuciones son bienvenidas! Si tienes una idea para un nuevo "Transformer" o una mejora en la UI:
-
-- Haz un Fork del repositorio.
-
-- Crea una rama (git checkout -b feature/NuevoTransformer).
-
-- Haz Commit de tus cambios.
-
-- Abre un Pull Request.
