@@ -1700,52 +1700,35 @@ reader_osm: {
 
     // --- 7. RASTER ---
     sp_point_sampling: {
-        cat: '4. RASTER', label: 'Point Sampler', icon: 'fa-crosshairs', color: '#8e44ad', in: 1, out: 1,
+        cat: '4. RASTER', label: 'Multi-Band Sampler', icon: 'fa-layer-group', color: '#8e44ad', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Raster Fuente (.tif)</span>
                 <input type="file" df-file class="node-control" accept=".tif,.tiff">
             </div>
             <div>
-                <span style="font-size:0.7em;color:#aaa">Nombre del Campo Salida</span>
-                <input type="text" df-field class="node-control" value="value">
+                <span style="font-size:0.7em;color:#aaa">Prefijo Campos Salida</span>
+                <input type="text" df-prefix class="node-control" value="value" placeholder="Ej: value">
             </div>
             <div style="font-size:0.6em;color:#888;margin-top:2px">
-                Extrae el valor del píxel bajo cada punto.
+                Detecta automáticamente todas las bandas y crea: <i>value_band0, value_band1...</i>
             </div>`,
         run: async (id, inputs, dom) => {
             if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de Puntos.");
             const fileInput = dom.querySelector('[df-file]');
             if (!fileInput.files || fileInput.files.length === 0) throw new Error("Carga el archivo Raster.");
             
-            const fieldName = dom.querySelector('[df-field]').value || 'value';
+            const prefix = dom.querySelector('[df-prefix]').value || 'value';
             const file = fileInput.files[0];
 
-            if(window.log) window.log("⏳ Analizando Raster (Modo Fuerza Bruta)...");
+            if(window.log) window.log("⏳ Analizando Raster (Extracción Multibanda)...");
 
-            // 1. Cargamos el raster (esto ya estaba bien con await)
             const georaster = await geoblaze.parse(file);
             const features = inputs[0].features;
             
             let hits = 0;
             let misses = 0;
 
-            const getPixelValue = (v) => {
-                if (v === null || v === undefined) return null;
-                if (typeof v === 'number') return v;
-                if (Array.isArray(v) || (v.length !== undefined && typeof v !== 'string')) {
-                    if (v.length === 0) return null;
-                    return getPixelValue(v[0]); 
-                }
-                if (typeof v === 'object') {
-                    const vals = Object.values(v);
-                    if (vals.length > 0) return getPixelValue(vals[0]);
-                }
-                return null;
-            };
-
-            // 2. CORRECCIÓN PRINCIPAL: Usamos Promise.all + map async
-            // Esto permite esperar a que geoblaze termine de leer cada punto antes de continuar
             const newFeatures = await Promise.all(features.map(async (f, idx) => {
                 const newF = JSON.parse(JSON.stringify(f)); 
                 
@@ -1753,36 +1736,42 @@ reader_osm: {
                     try {
                         const coords = turf.getCoords(newF); 
                         
-                        // AÑADIDO: 'await' aquí es crucial. Antes devolvía una Promesa, ahora devuelve el valor.
+                        // Obtenemos los valores crudos. 
+                        // Puede ser un número (1 banda) o un Array (N bandas)
                         const raw = await geoblaze.identify(georaster, coords);
 
-                        // --- ZONA DE DIAGNÓSTICO ---
-                        if (idx === 0) {
-                            console.log("🔍 DIAGNÓSTICO PUNTO 0:", {
-                                coords: coords,
-                                raster_bbox: { 
-                                    minX: georaster.xmin, minY: georaster.ymin, 
-                                    maxX: georaster.xmax, maxY: georaster.ymax 
-                                },
-                                raw_result: raw // Ahora verás el número o array real, no "Promise"
+                        // Lógica de Asignación Dinámica
+                        if (Array.isArray(raw)) {
+                            // CASO MULTIBANDA: Recorremos el array y creamos campos
+                            raw.forEach((val, bandIdx) => {
+                                const fieldName = `${prefix}_band${bandIdx}`;
+                                newF.properties[fieldName] = (val !== null && !isNaN(val)) 
+                                    ? parseFloat(Number(val).toFixed(4)) 
+                                    : null;
                             });
-                        }
-                        // ----------------------------
-
-                        let val = getPixelValue(raw);
-
-                        if (val !== null && !isNaN(val)) {
-                            newF.properties[fieldName] = parseFloat(Number(val).toFixed(4));
+                            hits++;
+                        } else if (typeof raw === 'number') {
+                            // CASO MONOBANDA
+                            const fieldName = `${prefix}_band0`;
+                            newF.properties[fieldName] = parseFloat(Number(raw).toFixed(4));
                             hits++;
                         } else {
-                            const typeStr = raw === null ? 'null' : (Array.isArray(raw) ? 'Array' : typeof raw);
-                            let content = "";
-                            try { content = JSON.stringify(raw); } catch(e){}
-                            newF.properties[fieldName] = `ERR: ${typeStr} ${content}`;
+                            // CASO ERROR / SIN DATOS (NoData)
+                            // Creamos al menos la banda 0 con null para mantener consistencia
+                            newF.properties[`${prefix}_band0`] = null;
                             misses++;
                         }
+
+                        // Diagnóstico solo del primer punto para verificar
+                        if (idx === 0) {
+                            console.log("🔍 DIAGNÓSTICO MULTIBANDA:", {
+                                result_type: Array.isArray(raw) ? `Array (${raw.length} bandas)` : typeof raw,
+                                raw_values: raw
+                            });
+                        }
+
                     } catch (err) {
-                        newF.properties[fieldName] = "ERR: Exception";
+                        newF.properties[`${prefix}_err`] = "Exception";
                         console.error(err);
                         misses++;
                     }
