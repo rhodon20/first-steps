@@ -1674,37 +1674,31 @@ reader_osm: {
         tpl: (id) => `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px">
                 <span style="font-size:0.7em;color:#aaa">Color Visor</span>
-                <input type="color" df-color class="node-control" value="#e74c3c" 
+                <input type="color" df-color class="node-control" value="#00ffcc" 
                     style="height:22px; width:50px; border:none; cursor:pointer; padding:0;">
             </div>
             <div style="font-size:0.6em;color:#666">
-                Pasa los datos y fuerza el color en el mapa.
+                Fuerza el estilo visual de esta capa.
             </div>`,
         run: (id, inputs, dom) => {
-            // 1. Si no hay entrada, no hay salida
             if (!inputs[0]) return null;
 
-            // 2. Leemos el color que el usuario ha elegido en este nodo específico
+            // Recuperamos el color seleccionado
             const colorInput = dom.querySelector('[df-color]');
-            const userColor = colorInput ? colorInput.value : '#e74c3c';
+            const userColor = colorInput ? colorInput.value : '#00ffcc';
 
-            // 3. ESTRATEGIA DE INYECCIÓN DE ESTILO
-            // Clonamos superficialmente el FeatureCollection (el contenedor)
-            // Mantenemos las features por referencia (para no duplicar RAM)
+            // Clonamos el contenedor (Superficial) para no romper la referencia de las features
+            // Esto es muy rápido y no consume memoria extra.
             const output = { ...inputs[0] };
 
-            // Inyectamos una propiedad reservada que tu visor de mapas deberá leer.
-            // Sobrescribimos cualquier estilo previo.
+            // Adjuntamos la orden de estilo al objeto raíz
             output._custom_style = {
                 color: userColor,
                 fillColor: userColor,
-                weight: 3,         // Un poco más grueso para destacar
+                weight: 3,
                 opacity: 1,
-                fillOpacity: 0.5
+                fillOpacity: 0.4
             };
-            
-            // Log opcional para debug
-            // if(window.log) window.log(`👁️ Inspector ID ${id}: Color ${userColor}`);
 
             return output;
         }
