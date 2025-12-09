@@ -4,9 +4,9 @@
 
 const TOOL_REGISTRY = {
     
-    // --- 1. INPUTS / READERS (GENERATORS) ---
+    // --- 1. READERS / READERS (GENERATORS) ---
 reader_osm: { 
-        cat: '1. Inputs', label: 'OSM Reader', icon: 'fa-globe', color: '#e67e22', in: 0, out: 1,
+        cat: '1. READERS', label: 'OSM Reader', icon: 'fa-globe', color: '#e67e22', in: 0, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Lugar / Zona</span>
@@ -86,15 +86,15 @@ reader_osm: {
             } catch (err) { throw new Error("Fallo Overpass: " + err.message); }
         } 
     },
-    reader_file: { cat:'1. Inputs', label:'File Reader', icon:'fa-folder-open', color:'#e67e22', in:0, out:1, 
+    reader_file: { cat:'1. READERS', label:'File Reader', icon:'fa-folder-open', color:'#e67e22', in:0, out:1, 
         tpl:(id)=>`<input type="file" onchange="loadFile(this,'${id}')" class="node-control"><input type="hidden" id="d-${id}"><div style="font-size:0.7em;color:#aaa" id="lbl-${id}">Sin archivo</div>`, 
         run: async(id)=>{ const v = document.getElementById('d-'+id).value; if(!v) throw new Error("Sin archivo"); return JSON.parse(v); } 
     },
-    reader_http: { cat:'1. Inputs', label:'HTTP JSON', icon:'fa-cloud-download-alt', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-u placeholder="URL (GeoJSON)">`, run: async(id,i,d)=>{const r=await fetch(d.querySelector('[df-u]').value); return await r.json();} },
-    reader_wkt: { cat:'1. Inputs', label:'WKT/Text', icon:'fa-font', color:'#e67e22', in:0, out:1, tpl:()=>`<textarea class="node-control" df-w placeholder="POINT(30 10)"></textarea>`, run: async(id,i,d)=>{const t=d.querySelector('[df-w]').value; const w=wellknown(t); return turf.featureCollection([turf.feature(w)])} },
-    reader_bbox_gen: { cat:'1. Inputs', label:'BBox Creator', icon:'fa-vector-square', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-b placeholder="minX,minY,maxX,maxY" value="-3.75,40.4,-3.65,40.5">`, run:(id,i,d)=>{const b=d.querySelector('[df-b]').value.split(',').map(Number); return turf.featureCollection([turf.bboxPolygon(b)])} },
+    reader_http: { cat:'1. READERS', label:'HTTP JSON', icon:'fa-cloud-download-alt', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-u placeholder="URL (GeoJSON)">`, run: async(id,i,d)=>{const r=await fetch(d.querySelector('[df-u]').value); return await r.json();} },
+    reader_wkt: { cat:'1. READERS', label:'WKT/Text', icon:'fa-font', color:'#e67e22', in:0, out:1, tpl:()=>`<textarea class="node-control" df-w placeholder="POINT(30 10)"></textarea>`, run: async(id,i,d)=>{const t=d.querySelector('[df-w]').value; const w=wellknown(t); return turf.featureCollection([turf.feature(w)])} },
+    reader_bbox_gen: { cat:'1. READERS', label:'BBox Creator', icon:'fa-vector-square', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-b placeholder="minX,minY,maxX,maxY" value="-3.75,40.4,-3.65,40.5">`, run:(id,i,d)=>{const b=d.querySelector('[df-b]').value.split(',').map(Number); return turf.featureCollection([turf.bboxPolygon(b)])} },
     reader_geotiff: { 
-        cat: '1. Inputs', label: 'GeoTIFF Reader', icon: 'fa-layer-group', color: '#e67e22', in: 0, out: 1,
+        cat: '1. READERS', label: 'GeoTIFF Reader', icon: 'fa-layer-group', color: '#e67e22', in: 0, out: 1,
         tpl: (id) => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Archivo .tif / .tiff</span>
@@ -141,9 +141,9 @@ reader_osm: {
             return turf.featureCollection([poly]);
         }
     },
-    gen_point: { cat:'1. Inputs', label:'Point Creator', icon:'fa-map-pin', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-c placeholder="Lon,Lat" value="-3.703,40.416">`, run:(id,i,d)=>{const c=d.querySelector('[df-c]').value.split(',').map(Number); return turf.featureCollection([turf.point(c)])} },
-    gen_grid: { cat:'1. Inputs', label:'Grid Generator', icon:'fa-th', color:'#e67e22', in:0, out:1, tpl:()=>`<select class="node-control" df-t><option value="hex">Hex</option><option value="sq">Square</option></select><input class="node-control" type="number" df-s value="1" placeholder="Size km">`, run:(id,i,d)=>{const t=d.querySelector('[df-t]').value,s=parseFloat(d.querySelector('[df-s]').value),b=[-3.8,40.3,-3.6,40.5]; return t==='hex'?turf.hexGrid(b,s):turf.squareGrid(b,s)} },
-    gen_random: { cat:'1. Inputs', label:'Random Points', icon:'fa-dice', color:'#e67e22', in:0, out:1, tpl:()=>`<input type="number" df-n value="50" class="node-control">`, run:(id,i,d)=>turf.randomPoint(parseInt(d.querySelector('[df-n]').value), {bbox:[-3.8,40.3,-3.6,40.5]}) },
+    gen_point: { cat:'1. READERS', label:'Point Creator', icon:'fa-map-pin', color:'#e67e22', in:0, out:1, tpl:()=>`<input class="node-control" df-c placeholder="Lon,Lat" value="-3.703,40.416">`, run:(id,i,d)=>{const c=d.querySelector('[df-c]').value.split(',').map(Number); return turf.featureCollection([turf.point(c)])} },
+    gen_grid: { cat:'1. READERS', label:'Grid Generator', icon:'fa-th', color:'#e67e22', in:0, out:1, tpl:()=>`<select class="node-control" df-t><option value="hex">Hex</option><option value="sq">Square</option></select><input class="node-control" type="number" df-s value="1" placeholder="Size km">`, run:(id,i,d)=>{const t=d.querySelector('[df-t]').value,s=parseFloat(d.querySelector('[df-s]').value),b=[-3.8,40.3,-3.6,40.5]; return t==='hex'?turf.hexGrid(b,s):turf.squareGrid(b,s)} },
+    gen_random: { cat:'1. READERS', label:'Random Points', icon:'fa-dice', color:'#e67e22', in:0, out:1, tpl:()=>`<input type="number" df-n value="50" class="node-control">`, run:(id,i,d)=>turf.randomPoint(parseInt(d.querySelector('[df-n]').value), {bbox:[-3.8,40.3,-3.6,40.5]}) },
 
     // --- 2.1 VECTOR - GEOMETRY (MANIPULATION) ---
     geo_centroid: { cat:'2.1 VECTOR - GEOMETRY', label:'CenterPoint', icon:'fa-dot-circle', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Centroide</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centroid(f,{properties:f.properties}))) },
@@ -1715,54 +1715,52 @@ reader_osm: {
             </div>`,
         run: async (id, inputs, dom) => {
             // 1. Validaciones
-            if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de Puntos en la entrada.");
+            if (!inputs[0] || !inputs[0].features) throw new Error("Conecta una capa de Puntos.");
             const fileInput = dom.querySelector('[df-file]');
-            if (!fileInput.files || fileInput.files.length === 0) throw new Error("Carga el archivo Raster (.tif) en el nodo.");
+            if (!fileInput.files || fileInput.files.length === 0) throw new Error("Carga el archivo Raster.");
             
             const fieldName = dom.querySelector('[df-field]').value || 'value';
             const file = fileInput.files[0];
 
-            if(window.log) window.log("⏳ Cargando y analizando Raster...");
+            if(window.log) window.log("⏳ Analizando píxeles...");
 
-            // 2. Cargar Raster con Geoblaze
-            // Geoblaze lee el archivo y prepara la matemática espacial automáticamente
+            // 2. Cargar Raster
             const georaster = await geoblaze.parse(file);
-
-            // 3. Procesar Puntos
             const features = inputs[0].features;
+            
             let hits = 0;
             let misses = 0;
 
-            // Iteramos sobre los puntos (clonamos para no mutar el original en el flujo)
-            // Usamos un bucle for tradicional para soportar async si fuera necesario, 
-            // aunque geoblaze.identify suele ser síncrono si el raster ya cargó.
-            const newFeatures = features.map(f => {
-                const newF = JSON.parse(JSON.stringify(f)); // Deep copy
+            const newFeatures = features.map((f, idx) => {
+                const newF = JSON.parse(JSON.stringify(f)); 
                 
-                // Solo procesamos si es un Punto
                 if (turf.getType(newF) === 'Point') {
                     try {
-                        const coords = turf.getCoords(newF); // [lon, lat]
-                        
-                        // IDENTIFY: La magia de Geoblaze
-                        // Devuelve el valor del píxel en esa coordenada [lon, lat]
+                        const coords = turf.getCoords(newF);
+                        // Identify devuelve el valor del píxel (puede ser Número, Array o TypedArray)
                         const result = geoblaze.identify(georaster, coords);
 
-                        // El resultado puede ser un número (banda única) o array (multibanda)
-                        // Si es array y tiene valores, cogemos el primero (Banda 1)
-                        // Si es un número válido, lo usamos.
                         let val = null;
-                        if (Array.isArray(result) && result.length > 0) val = result[0];
-                        else if (typeof result === 'number') val = result;
 
-                        // Geoblaze devuelve 'NoData' a veces como valores muy bajos/altos o null
-                        if (val !== null && val !== undefined) {
-                            newF.properties[fieldName] = val;
+                        // Lógica de Extracción Robusta
+                        if (typeof result === 'number') {
+                            // Caso A: Es un número directo
+                            val = result;
+                        } else if (result && result.length !== undefined && result.length > 0) {
+                            // Caso B: Es Array o TypedArray (Float32Array, etc.) -> Tomamos banda 0
+                            val = result[0];
+                        }
+
+                        // Limpieza y validación final
+                        if (val !== null && val !== undefined && !isNaN(val)) {
+                            // Redondeamos para evitar float noise (ej: 12.00000001)
+                            newF.properties[fieldName] = parseFloat(Number(val).toFixed(4));
                             hits++;
                         } else {
-                            newF.properties[fieldName] = null;
+                            newF.properties[fieldName] = null; // O "NoData"
                             misses++;
                         }
+
                     } catch (err) {
                         newF.properties[fieldName] = null;
                         misses++;
