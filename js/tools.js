@@ -145,11 +145,11 @@ reader_osm: {
     gen_grid: { cat:'1. Inputs', label:'Grid Generator', icon:'fa-th', color:'#e67e22', in:0, out:1, tpl:()=>`<select class="node-control" df-t><option value="hex">Hex</option><option value="sq">Square</option></select><input class="node-control" type="number" df-s value="1" placeholder="Size km">`, run:(id,i,d)=>{const t=d.querySelector('[df-t]').value,s=parseFloat(d.querySelector('[df-s]').value),b=[-3.8,40.3,-3.6,40.5]; return t==='hex'?turf.hexGrid(b,s):turf.squareGrid(b,s)} },
     gen_random: { cat:'1. Inputs', label:'Random Points', icon:'fa-dice', color:'#e67e22', in:0, out:1, tpl:()=>`<input type="number" df-n value="50" class="node-control">`, run:(id,i,d)=>turf.randomPoint(parseInt(d.querySelector('[df-n]').value), {bbox:[-3.8,40.3,-3.6,40.5]}) },
 
-    // --- 2. GEOMETRY (MANIPULATION) ---
-    geo_centroid: { cat:'2. Geometry', label:'CenterPoint', icon:'fa-dot-circle', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Centroide</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centroid(f,{properties:f.properties}))) },
-    util_filter_geo: { cat:'5. Utils', label:'Geometry Filter', icon:'fa-shapes', color:'#7f8c8d', in:1, out:3, tpl:()=>`<div style="font-size:0.6em">1:Poly 2:Line 3:Pt</div>`, run: (id,i)=>{const p=[],l=[],pt=[]; i[0].features.forEach(f=>{const t=turf.getType(f).toLowerCase(); if(t.includes('poly'))p.push(f);else if(t.includes('line'))l.push(f);else pt.push(f)}); return {output_1:turf.featureCollection(p),output_2:turf.featureCollection(l),output_3:turf.featureCollection(pt)}} },
+    // --- 2.1 VECTOR - GEOMETRY (MANIPULATION) ---
+    geo_centroid: { cat:'2.1 VECTOR - GEOMETRY', label:'CenterPoint', icon:'fa-dot-circle', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Centroide</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.centroid(f,{properties:f.properties}))) },
+    util_filter_geo: { cat:'3. UTILS', label:'Geometry Filter', icon:'fa-shapes', color:'#7f8c8d', in:1, out:3, tpl:()=>`<div style="font-size:0.6em">1:Poly 2:Line 3:Pt</div>`, run: (id,i)=>{const p=[],l=[],pt=[]; i[0].features.forEach(f=>{const t=turf.getType(f).toLowerCase(); if(t.includes('poly'))p.push(f);else if(t.includes('line'))l.push(f);else pt.push(f)}); return {output_1:turf.featureCollection(p),output_2:turf.featureCollection(l),output_3:turf.featureCollection(pt)}} },
     geo_simplify: { 
-        cat: '2. Geometry', label: 'Simplifier', icon: 'fa-compress-arrows-alt', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Simplifier', icon: 'fa-compress-arrows-alt', color: '#2980b9', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Tolerancia (Grados)</span>
@@ -163,7 +163,7 @@ reader_osm: {
         }
     },
     geo_chunk: { 
-        cat: '2. Geometry', label: 'Line Chopper', icon: 'fa-cut', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Line Chopper', icon: 'fa-cut', color: '#2980b9', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Longitud de Segmento</span>
@@ -194,7 +194,7 @@ reader_osm: {
         }
     },
     geo_dissolve: { 
-        cat: '2. Geometry', label: 'Dissolver', icon: 'fa-object-group', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Dissolver', icon: 'fa-object-group', color: '#2980b9', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Disolver por campos</span>
@@ -245,7 +245,7 @@ reader_osm: {
         }
     },
     geo_explode: { 
-        cat: '2. Geometry', label: 'Exploder', icon: 'fa-shapes', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Exploder', icon: 'fa-shapes', color: '#2980b9', in: 1, out: 1,
         tpl: () => `<div style="font-size:0.7em;color:#aaa;text-align:center">Multipart <i class="fas fa-arrow-right"></i> Singlepart</div>`,
         run: (id, inputs) => {
             // turf.flatten convierte cualquier Multi(Point|Line|Polygon) en una colección de Features individuales
@@ -253,7 +253,7 @@ reader_osm: {
         }
     },
     geo_vertex_creator: { 
-        cat: '2. Geometry', label: 'Vertex Creator', icon: 'fa-draw-polygon', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Vertex Creator', icon: 'fa-draw-polygon', color: '#2980b9', in: 1, out: 1,
         // CORRECCIÓN: Usamos tpl explícito para compatibilidad con tu index.html actual
         tpl: () => `
             <div style="margin-bottom:4px">
@@ -330,7 +330,7 @@ reader_osm: {
         }
     },
     geo_triangulator: { 
-        cat: '2. Geometry', label: 'Triangulator', icon: 'fa-shapes', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Triangulator', icon: 'fa-shapes', color: '#2980b9', in: 1, out: 1,
         tpl: () => `<div style="font-size:0.7em;color:#aaa;text-align:center">Polygons <i class="fas fa-arrow-right"></i> Triangles (TIN)</div>`,
         run: (id, inputs) => {
             const res = [];
@@ -359,7 +359,7 @@ reader_osm: {
         }
     },
     geo_donut_extractor: { 
-        cat: '2. Geometry', label: 'Donut Extractor', icon: 'fa-dot-circle', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Donut Extractor', icon: 'fa-dot-circle', color: '#2980b9', in: 1, out: 1,
         tpl: () => `<div style="font-size:0.7em;color:#aaa;text-align:center">Extract Polygon Holes</div>`,
         run: (id, inputs) => {
             const holes = [];
@@ -384,7 +384,7 @@ reader_osm: {
         }
     },
     geo_line_closer: { 
-        cat: '2. Geometry', label: 'Line Closer', icon: 'fa-vector-square', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Line Closer', icon: 'fa-vector-square', color: '#2980b9', in: 1, out: 1,
         tpl: () => `<div style="font-size:0.7em;color:#aaa;text-align:center">LineString <i class="fas fa-arrow-right"></i> Polygon</div>`,
         run: (id, inputs) => {
             const polys = [];
@@ -407,7 +407,7 @@ reader_osm: {
         }
     },
     geo_kink_remover: { 
-        cat: '3. Spatial', label: 'Kink Remover', icon: 'fa-band-aid', color: '#8e44ad', in: 1, out: 1,
+        cat: '2.2 VECTOR - SPATIAL', label: 'Kink Remover', icon: 'fa-band-aid', color: '#8e44ad', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Umbral Z-Kink (Grados)</span>
@@ -471,7 +471,7 @@ reader_osm: {
         }
     },
     geo_angle_calculator: { 
-        cat: '3. Spatial', label: 'Angle Calculator', icon: 'fa-ruler-combined', color: '#8e44ad', in: 1, out: 1,
+        cat: '2.2 VECTOR - SPATIAL', label: 'Angle Calculator', icon: 'fa-ruler-combined', color: '#8e44ad', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Ángulo Máximo (Grados)</span>
@@ -545,11 +545,11 @@ reader_osm: {
             return turf.featureCollection(points);
         }
     },
-    geo_point_surf: { cat:'2. Geometry', label:'CenterPointInside', icon:'fa-map-marker', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Interior garantizado</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.pointOnFeature(f))) },
-    geo_bbox: { cat:'2. Geometry', label:'Envelope', icon:'fa-square-full', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Caja Límite</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.bboxPolygon(turf.bbox(f)))) },
+    geo_point_surf: { cat:'2.1 VECTOR - GEOMETRY', label:'CenterPointInside', icon:'fa-map-marker', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Interior garantizado</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.pointOnFeature(f))) },
+    geo_bbox: { cat:'2.1 VECTOR - GEOMETRY', label:'Envelope', icon:'fa-square-full', color:'#2980b9', in:1, out:1, tpl:()=>`<div>Caja Límite</div>`, run: (id,i)=>turf.featureCollection(i[0].features.map(f=>turf.bboxPolygon(turf.bbox(f)))) },
         
     geo_voronoi: { 
-                cat:'2. Geometry', label:'Voronoi', icon:'fa-th-large', color:'#2980b9', in:1, out:1, 
+                cat:'2.1 VECTOR - GEOMETRY', label:'Voronoi', icon:'fa-th-large', color:'#2980b9', in:1, out:1, 
                 tpl:()=>`<div>Polígonos</div>`, 
                 run: (id,i)=>{
                     if (!i[0] || !i[0].features) throw new Error("Sin datos");
@@ -600,7 +600,7 @@ reader_osm: {
                 } 
             },
     geo_buffer: { 
-        cat: '2. Geometry', label: 'Bufferer', icon: 'fa-bullseye', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Bufferer', icon: 'fa-bullseye', color: '#2980b9', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Radio / Unidad</span>
@@ -639,7 +639,7 @@ reader_osm: {
         }
     },
     geo_random_fill: { 
-        cat: '2. Geometry', label: 'Random Fill', icon: 'fa-braille', color: '#2980b9', in: 1, out: 1,
+        cat: '2.1 VECTOR - GEOMETRY', label: 'Random Fill', icon: 'fa-braille', color: '#2980b9', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Puntos por Polígono</span>
@@ -681,9 +681,9 @@ reader_osm: {
         }
     },
 
-    // --- 3. SPATIAL ANALYSIS ---
+    // --- 2.2 VECTOR - SPATIAL ANALYSIS ---
     sp_min_area_solver: { 
-        cat: '3. Spatial', label: 'MinArea Solver', icon: 'fa-compress-alt', color: '#8e44ad', in: 1, out: 2,
+        cat: '2.2 VECTOR - SPATIAL', label: 'MinArea Solver', icon: 'fa-compress-alt', color: '#8e44ad', in: 1, out: 2,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Criterio de Área</span>
@@ -789,7 +789,7 @@ reader_osm: {
         }
     },
     geo_snap: { 
-        cat: '3. Spatial', label: 'Snapper', icon: 'fa-magnet', color: '#8e44ad', in: 2, out: 1,
+        cat: '2.2 VECTOR - SPATIAL', label: 'Snapper', icon: 'fa-magnet', color: '#8e44ad', in: 2, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Distancia de Atracción</span>
@@ -844,7 +844,7 @@ reader_osm: {
         }
     },
     attr_stats: { 
-        cat: '4. Attributes', label: 'Stats Calc', icon: 'fa-calculator', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Stats Calc', icon: 'fa-calculator', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Campo Numérico</span>
@@ -879,7 +879,7 @@ reader_osm: {
         }
     },
     attr_renamer: { 
-        cat: '4. Attributes', label: 'Renamer', icon: 'fa-tag', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Renamer', icon: 'fa-tag', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Mapeo (Viejo:Nuevo)</span>
@@ -903,7 +903,7 @@ reader_osm: {
     },
 
     attr_keeper: { 
-        cat: '4. Attributes', label: 'Keeper', icon: 'fa-check-square', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Keeper', icon: 'fa-check-square', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Campos a mantener</span>
@@ -926,7 +926,7 @@ reader_osm: {
     },
 
     attr_creator: { 
-        cat: '4. Attributes', label: 'Attr Creator', icon: 'fa-plus-square', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Attr Creator', icon: 'fa-plus-square', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Nuevo Campo</span>
@@ -962,7 +962,7 @@ reader_osm: {
     },
 
     attr_counter: { 
-        cat: '4. Attributes', label: 'Counter', icon: 'fa-sort-numeric-down', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Counter', icon: 'fa-sort-numeric-down', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Nombre Campo ID</span>
@@ -983,7 +983,7 @@ reader_osm: {
         }
     },
     attr_sorter: { 
-        cat: '4. Attributes', label: 'Sorter', icon: 'fa-sort-alpha-down', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Sorter', icon: 'fa-sort-alpha-down', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Campo a Ordenar</span>
@@ -1026,7 +1026,7 @@ reader_osm: {
     },
 
     attr_string_formatter: { 
-        cat: '4. Attributes', label: 'String Formatter', icon: 'fa-text-width', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'String Formatter', icon: 'fa-text-width', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Campo Objetivo</span>
@@ -1106,7 +1106,7 @@ reader_osm: {
         }
     },
     attr_feature_merger: { 
-        cat: '4. Attributes', label: 'Feature Merger', icon: 'fa-code-branch', color: '#27ae60', in: 2, out: 3,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Feature Merger', icon: 'fa-code-branch', color: '#27ae60', in: 2, out: 3,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Relación (Input1 : Input2)</span>
@@ -1188,7 +1188,7 @@ reader_osm: {
         }
     },
     attr_area: { 
-        cat: '4. Attributes', label: 'Area Calc', icon: 'fa-ruler-combined', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Area Calc', icon: 'fa-ruler-combined', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Nombre del Campo</span>
@@ -1219,7 +1219,7 @@ reader_osm: {
     },
 
     attr_length: { 
-        cat: '4. Attributes', label: 'Length Calc', icon: 'fa-ruler-horizontal', color: '#27ae60', in: 1, out: 1,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Length Calc', icon: 'fa-ruler-horizontal', color: '#27ae60', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Nombre del Campo</span>
@@ -1257,7 +1257,7 @@ reader_osm: {
         }
     },
     attr_matcher: { 
-        cat: '4. Attributes', label: 'Matcher', icon: 'fa-clone', color: '#27ae60', in: 1, out: 2,
+        cat: '2.3 VECTOR - ATTRIBUTES', label: 'Matcher', icon: 'fa-clone', color: '#27ae60', in: 1, out: 2,
         tpl: () => `
             <div style="margin-bottom:6px">
                 <span style="font-size:0.7em;color:#aaa">Criterio de Coincidencia</span>
@@ -1339,7 +1339,7 @@ reader_osm: {
         }
     },
     sp_spatial_filter: { 
-        cat: '3. Spatial', label: 'Spatial Filter', icon: 'fa-filter', color: '#8e44ad', in: 2, out: 2,
+        cat: '2.2 VECTOR - SPATIAL', label: 'Spatial Filter', icon: 'fa-filter', color: '#8e44ad', in: 2, out: 2,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Criterio (Input 1 vs Input 2)</span>
@@ -1393,7 +1393,7 @@ reader_osm: {
     },
 
     sp_nearest_neighbor: { 
-        cat: '3. Spatial', label: 'Nearest Neighbor', icon: 'fa-shoe-prints', color: '#8e44ad', in: 2, out: 2,
+        cat: '2.2 VECTOR - SPATIAL', label: 'Nearest Neighbor', icon: 'fa-shoe-prints', color: '#8e44ad', in: 2, out: 2,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Radio Máximo</span>
@@ -1471,7 +1471,7 @@ reader_osm: {
     },
 
     sp_intersector: { 
-        cat: '3. Spatial', label: 'Intersector', icon: 'fa-times', color: '#8e44ad', in: 2, out: 2,
+        cat: '2.2 VECTOR - SPATIAL', label: 'Intersector', icon: 'fa-times', color: '#8e44ad', in: 2, out: 2,
         tpl: () => `<div style="font-size:0.7em;color:#aaa">Calcula intersección. <br>Si son líneas, las corta.</div>
                     <div style="font-size:0.6em;color:#888;margin-top:2px">Out 1: Geometría (Líneas/Polys) | Out 2: Puntos</div>`,
         run: (id, inputs) => {
@@ -1547,7 +1547,7 @@ reader_osm: {
         }
     },
     sp_clip: { 
-        cat:'3. Spatial', label:'Clipper (Robust)', icon:'fa-crop', color:'#8e44ad', in:2, out:1, 
+        cat:'2.2 VECTOR - SPATIAL', label:'Clipper (Robust)', icon:'fa-crop', color:'#8e44ad', in:2, out:1, 
         tpl:()=>`<div>Data &#8745; Mask</div>`, 
         run: async (id,i)=>{ 
             if(!i[0] || !i[1] || !i[1].features.length) throw new Error("Faltan datos");
@@ -1590,8 +1590,8 @@ reader_osm: {
         } 
     },
     
-    // --- 4. ATTRIBUTES (DATA) ---
-    attr_test: { cat:'4. Attributes', label:'Tester', icon:'fa-balance-scale', color:'#27ae60', in:1, out:2, 
+    // --- 2.3 VECTOR - ATTRIBUTES (DATA) ---
+    attr_test: { cat:'2.3 VECTOR - ATTRIBUTES', label:'Tester', icon:'fa-balance-scale', color:'#27ae60', in:1, out:2, 
         tpl:()=>`<input class="node-control" df-l placeholder="Field"><select class="node-control" df-op><option value="==">=</option><option value=">">></option><option value="<"><</option><option value="like">Like</option></select><input class="node-control" df-r placeholder="Val">`, 
         run: (id,i,d)=>{
             const l=d.querySelector('[df-l]').value, op=d.querySelector('[df-op]').value, r=d.querySelector('[df-r]').value, p=[], f=[];
@@ -1602,10 +1602,10 @@ reader_osm: {
         } 
     },
 
-    // --- 5. UTILS / LOGIC ---
+    // --- 3. UTILS / LOGIC ---
 // JUNCTION: Ahora actúa como "Union" (acepta hasta 5 entradas y las fusiona)
     util_junction: { 
-        cat: '5. Utils', label: 'Junction', icon: 'fa-circle', color: '#7f8c8d', 
+        cat: '3. UTILS', label: 'Junction', icon: 'fa-circle', color: '#7f8c8d', 
         in: 5, // Múltiples entradas para permitir la fusión
         out: 1, 
         tpl: () => ``, // Se mantiene vacío para conservar el estilo minimalista
@@ -1622,9 +1622,9 @@ reader_osm: {
             return turf.featureCollection(allFeatures);
         } 
     },    
-    util_holder: { cat:'5. Utils', label:'Inspector', icon:'fa-eye', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div style="font-size:0.7em; color:#aaa">Passthrough</div>`, run: (id,i)=>i[0] },
+    util_holder: { cat:'3. UTILS', label:'Inspector', icon:'fa-eye', color:'#7f8c8d', in:1, out:1, tpl:()=>`<div style="font-size:0.7em; color:#aaa">Passthrough</div>`, run: (id,i)=>i[0] },
     util_sampler: { 
-        cat: '5. Utils', label: 'Random Sampler', icon: 'fa-dice', color: '#7f8c8d', in: 1, out: 1,
+        cat: '3. UTILS', label: 'Random Sampler', icon: 'fa-dice', color: '#7f8c8d', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Estrategia de Muestreo</span>
@@ -1700,7 +1700,7 @@ reader_osm: {
 
     // --- 7. RASTER ---
     sp_point_sampling: {
-        cat: '6. Raster', label: 'Point Sampler', icon: 'fa-crosshairs', color: '#8e44ad', in: 1, out: 1,
+        cat: '4. RASTER', label: 'Point Sampler', icon: 'fa-crosshairs', color: '#8e44ad', in: 1, out: 1,
         tpl: () => `
             <div style="margin-bottom:4px">
                 <span style="font-size:0.7em;color:#aaa">Raster Fuente (.tif)</span>
@@ -1777,8 +1777,8 @@ reader_osm: {
         }
     },
     // --- 6. OUTPUTS (WRITERS) ---
-    writer_geojson: { cat:'7. Writers', label:'GeoJSON DL', icon:'fa-file-code', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(JSON.stringify(i[0]),'export.geojson','application/json'); return i[0]} },
-    writer_csv: { cat:'7. Writers', label:'CSV DL', icon:'fa-file-csv', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toCSV(i[0]),'export.csv','text/csv'); return i[0]} },
-    writer_kml: { cat:'7. Writers', label:'KML DL', icon:'fa-globe', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toKML(i[0]),'export.kml','application/vnd.google-earth.kml+xml'); return i[0]} },
-    writer_wkt: { cat:'7. Writers', label:'WKT Console', icon:'fa-font', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Ver en Log</div>`, run: (id,i)=>{i[0].features.forEach(f=>log(wellknown.stringify(f))); return i[0]} }
+    writer_geojson: { cat:'5. WRITERS', label:'GeoJSON DL', icon:'fa-file-code', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(JSON.stringify(i[0]),'export.geojson','application/json'); return i[0]} },
+    writer_csv: { cat:'5. WRITERS', label:'CSV DL', icon:'fa-file-csv', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toCSV(i[0]),'export.csv','text/csv'); return i[0]} },
+    writer_kml: { cat:'5. WRITERS', label:'KML DL', icon:'fa-globe', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Descargar</div>`, run: (id,i)=>{download(toKML(i[0]),'export.kml','application/vnd.google-earth.kml+xml'); return i[0]} },
+    writer_wkt: { cat:'5. WRITERS', label:'WKT Console', icon:'fa-font', color:'#c0392b', in:1, out:0, tpl:()=>`<div>Ver en Log</div>`, run: (id,i)=>{i[0].features.forEach(f=>log(wellknown.stringify(f))); return i[0]} }
 };
